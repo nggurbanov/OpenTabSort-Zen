@@ -11,6 +11,12 @@ All read/write access to the rules pref + the file fallback. Cleans malformed in
 | `validateRules(data)` | `Rule[]` | For rules.json file content — throws on bad input. |
 | `loadRules()` | async `Rule[]` | Precedence: pref → rules.json file → `DEFAULT_RULES`. |
 | `isMinimalStyle()` | bool | Reads the `minimal-style` pref. |
+| `getAIEngine()` | `"off" \| "local" \| "ollama"` | Normalized read of the engine pref (unknown / empty → `"off"`). |
+| `getOllamaHost()` | string | Ollama base URL, falls back to default. |
+| `getOllamaModel()` | string | Ollama model name, falls back to default. |
+| `isOllamaWarmupEnabled()` | bool | Whether to preload + keep the model warm. |
+| `getAIExistingBehavior()` | `"always-add" \| "transient"` | What to do when AI moves a tab into an existing rule-matched group. |
+| `getAINewGroupBehavior()` | string | One of: `"auto-add"`, `"transient"`, `"prompt"`, `"fresh-categories"`, `"identify-only"`. |
 
 ## Rule shape
 

@@ -19,9 +19,25 @@ The function the toolbar button invokes. Sequences all the passes.
 6.  runPass1(tabs, rules)             — plan moves
 7.  console.groupCollapsed(...)       — dry-run logging
 8.  applyPass1(byGroup, ws, rules)    — execute moves
-9.  moveUngroupedToTop(ws)            — anything left ungrouped goes to top
-10. syncAllGroupColors(ws, rules)     — push colors onto ALL rule-matched groups
-11. console.groupEnd()
+9.  getAIEngine() === "off" ? skip Pass 2 : continue
+10. setButtonThinking(true)           — start wand pulse animation
+11. runPass2()                        — branches on engine:
+       "local"  → ai.mjs runPass2()       (existing groups only)
+       "ollama" → ollama.mjs runPass2Ollama() OR runPass2OllamaFresh()
+                  depending on ai-new-group-behavior
+12. Plan Mode gate (if applicable):
+       getAINewGroupBehavior() in ("identify-only", "auto-add",
+       "always-add" with new groups) → showPreviewModal(plan)
+       Modal returns the user-edited plan. Apply waits for confirmation.
+13. applyPass2(plan, ws, rules)       — execute moves; create new groups;
+                                        optionally grow rules array
+14. (fresh-categories mode) dissolve any group with zero tabs after rebuild
+15. moveUngroupedToTop(ws)            — anything left ungrouped goes to top
+16. syncAllGroupColors(ws, rules)     — push colors onto ALL rule-matched groups
+17. logNestingDiagnostic()            — warn if any tab-group ended up nested
+                                        (a Zen DOM-API edge case)
+18. setButtonThinking(false)          — restore wand
+19. console.groupEnd()
 ```
 
 ## Why dissolve runs BEFORE Pass 1

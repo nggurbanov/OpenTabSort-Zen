@@ -12,7 +12,7 @@ Local AI is intentionally limited to **assigning unmatched tabs into EXISTING ru
 
 The threshold is therefore set high (0.65) to make local AI a **high-precision / low-recall** filter — it should only fire when the model is genuinely confident, otherwise stay quiet. Rules do the real classification work.
 
-For new-group invention, full-vocabulary classification, and any flow involving cluster naming, use the **Ollama engine** (`modules/ollama.mjs`) instead. See `module-ollama.md` for that path.
+For new-group invention, full-vocabulary classification, and any flow involving cluster naming, use the **Ollama engine** (`modules/ollama.mjs`) instead. See [module-ollama.md](module-ollama.md) for that path.
 
 ## Models used
 
@@ -76,7 +76,7 @@ unmatched tabs (from runPass1)
 
 ### `ai-new-group-behavior` — does not apply in local-AI mode
 
-The dropdown affects only the Ollama engine. The local-AI path never invents new groups, so its setting is irrelevant when the AI engine is "Local". See `module-ollama.md`.
+The dropdown affects only the Ollama engine. The local-AI path never invents new groups, so its setting is irrelevant when the AI engine is "Local". See [module-ollama.md](module-ollama.md).
 
 ## Failure modes
 

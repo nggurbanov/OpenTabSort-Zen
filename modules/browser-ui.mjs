@@ -26,7 +26,6 @@ const WAND_ICON_SVG = `
 const buttonXul = () => `
   <toolbarbutton
     id="${CONFIG.BUTTON_ID}"
-    class="tab-wand-button-with-icon"
     command="${CONFIG.COMMAND_ID}"
     tooltiptext="Auto Organize Tabs (domain rules + AI fallback)">
     <hbox class="toolbarbutton-box" align="center">

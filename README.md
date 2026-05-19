@@ -60,7 +60,7 @@ For Ollama, the default model is `qwen2.5:1.5b` (~1 GB, runs on most GPUs). If y
 
 ## Reporting bugs
 
-Open an issue on the source repository. Helpful to include the **Browser Console** log (Ctrl+Shift+J) around the time of the bug — the mod logs detailed diagnostics with the prefix `[AutoOrganize]`.
+Open an issue on the source repository. Helpful to include the **Browser Console** log (Ctrl+Shift+J) around the time of the bug — the mod logs detailed diagnostics with the prefix `[ZenTabWand]`.
 
 ## License
 

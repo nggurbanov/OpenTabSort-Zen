@@ -20,7 +20,7 @@ import { showPreviewModal } from "./preview-modal.mjs";
 
 // Module-version stamp so we can confirm the latest copy is loaded in the running window.
 // If you don't see this in the Browser Console after restart, ES module cache is stale.
-console.log(`${LOG} click-handler.mjs v0.16.0 loaded`);
+console.log(`${LOG} click-handler.mjs v1.0.0 loaded`);
 
 const getTidyButton = () =>
   window.gZenWorkspaces?.activeWorkspaceElement?.querySelector(`#${CONFIG.BUTTON_ID}`) || null;

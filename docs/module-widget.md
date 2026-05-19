@@ -2,11 +2,13 @@
 
 Builds the pill table inside the settings dialog. One export, lots of internal helpers.
 
-## Export
+## Exports
 
 | Name | Notes |
 |---|---|
 | `buildRulesEditor(rules)` | Returns the `<div class="zao-rules-editor">` container element. Mutations to the `rules` array auto-persist to the pref. The container exposes a `_zaoRefresh(reason)` method for external refresh triggers. |
+| `buildBackupRestoreSection()` | Returns a `<div class="zao-backup-section">` containing a Sine-style separator header (XUL `<vbox class="zao-section-header-row"><hr/><label class="separator-label">Backup & Restore</label></vbox>`), a description, and Export / Import… buttons. **Export** copies the current rules-pref JSON to the clipboard; **Import…** opens a file picker, validates, and `writeRulesPref()`s the imported array (the open editor refreshes via its own pref observer). |
+| `teardownRulesPrefObserver()` | Removes the rules-pref observer registered inside `buildRulesEditor`. Called from `prefs-ui.mjs`'s `teardownSettingsObserver` on window unload to prevent observer leaks. |
 
 ## DOM structure
 

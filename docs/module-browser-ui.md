@@ -14,7 +14,7 @@ Everything that puts visible chrome into `browser.xhtml`. Loaded only in the bro
 
 The button is inserted into every `.pinned-tabs-container-separator` element (one per workspace). It's placed BEFORE the native clear button if that exists, otherwise appended. This matches what Tidy Tabs does so the layout stays consistent.
 
-The XUL is a `<toolbarbutton>` with `command="cmd_zenAutoOrganize"`. The wand icon SVG is inline. CSS in `userChrome.css` handles the wiggle animation on the `.zao-wiggling` class (added/removed by `handleOrganizeClick`'s `wiggleButton`).
+The XUL is a `<toolbarbutton id="tab-wand-button" command="cmd_zenAutoOrganize">` with an inline Lucide wand-sparkles SVG icon embedded inside an `<hbox class="toolbarbutton-box">`. CSS in `userChrome.css` handles the wiggle animation on the `.zao-wiggling` class and the AI-thinking pulse on the `.zao-thinking` class (both added/removed by `click-handler.mjs`).
 
 ## Why workspace hooks
 

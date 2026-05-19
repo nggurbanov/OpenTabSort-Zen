@@ -40,15 +40,20 @@ See [architecture.md](architecture.md) for the full picture; the short version:
 
 - [chrome-globals.md](chrome-globals.md) — primer on Firefox chrome script globals (read this first)
 - [auto-organize.md](auto-organize.md) — entry point
-- [module-config.md](module-config.md) — constants + palette
-- [module-rules.md](module-rules.md) — rules pref I/O + load chain
+- [module-config.md](module-config.md) — constants, palette, AI tuning, pref-key map
+- [module-rules.md](module-rules.md) — rules pref I/O + AI-engine accessor functions
 - [module-tabs.md](module-tabs.md) — tab enumeration + DOM helpers
 - [module-groups.md](module-groups.md) — tab-group manipulation + coloring
 - [module-pass1.md](module-pass1.md) — domain matcher + apply
 - [module-ai.md](module-ai.md) — Pass 2 local AI engine (embedding-only, existing groups)
+- [module-ollama.md](module-ollama.md) — Pass 2 Ollama engine (transport + prompts + orchestrators)
 - [module-click-handler.md](module-click-handler.md) — tidy click orchestrator
-- [module-browser-ui.md](module-browser-ui.md) — button, command, workspace hooks
-- [module-browser-hooks.md](module-browser-hooks.md) — TabGrouped / TabGroupCreate
-- [module-prefs-ui.md](module-prefs-ui.md) — Sine dialog detection + widget injection
-- [module-widget.md](module-widget.md) — rules editor table widget
+- [module-browser-ui.md](module-browser-ui.md) — wand button, command, workspace hooks
+- [module-browser-hooks.md](module-browser-hooks.md) — TabGrouped / TabGroupCreate / minimal-style observer
+- [module-prefs-ui.md](module-prefs-ui.md) — Sine dialog detection, widget injection, conditional fields
+- [module-widget.md](module-widget.md) — rules editor table + Backup & Restore
 - [module-color-picker.md](module-color-picker.md) — color popover + palette fetch
+
+Modules without dedicated docs (small / self-explanatory — see source comments):
+- `modules/preview-modal.mjs` — Plan Mode interactive `<dialog>` (keep/skip groups, re-assign actions, applied/cancelled signal)
+- `modules/ui-toast.mjs` — `showToast(message, options)` wrapper around `gZenUIManager.showToast` with an alerts-service fallback

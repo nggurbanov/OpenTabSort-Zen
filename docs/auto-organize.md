@@ -16,10 +16,12 @@ Browser context init waits until **gBrowser**, **gZenWorkspaces**, the **command
 ## Cleanup
 
 `unload` and `beforeunload` both call `cleanup()`:
+- clears the init-polling `setInterval` (if still running)
 - invalidates `domCache`
 - disconnects the settings MutationObserver
+- tears down the minimal-style pref observer
 
-The pref observer registered by `widget.mjs` self-detaches when its container is no longer connected to the DOM.
+The pref observer registered by `widget.mjs` self-detaches when its container is no longer connected to the DOM (and there's an explicit `teardownRulesPrefObserver()` called from `prefs-ui.mjs`'s `teardownSettingsObserver` as a belt-and-suspenders).
 
 ## Why one entry instead of two
 

@@ -276,8 +276,8 @@ export const runPass2 = async (unmatched, rules, workspaceId) => {
   // New-cluster formation (and the smart-tab-topic naming model) produced unreliable
   // results — the embedding model clusters by stylistic similarity (homepage-style
   // titles) rather than topic, and the score range is too compressed to threshold
-  // safely. New-group classification is left to a future Ollama-backed path.
-  // clusterEmbeddings / generateClusterName are kept around for that integration.
+  // safely. New-group classification is delegated to the Ollama-backed path
+  // in modules/ollama.mjs.
 
   return {
     assignedToExisting,

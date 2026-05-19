@@ -10,7 +10,7 @@
 //   document.createXULElement(tag) — create a XUL element (vs HTML).
 // See docs/chrome-globals.md for a longer reference.
 
-export const LOG = "[AutoOrganize]";
+export const LOG = "[ZenTabWand]";
 
 export const CONFIG = {
   // Init polling — wait for gBrowser/gZenWorkspaces/separator to appear at startup.
