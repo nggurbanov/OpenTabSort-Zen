@@ -12,11 +12,10 @@
 
 export const LOG = "[ZenTabWand]";
 
-// Build tag, distinct from theme.json's user-facing `version`. Bumped any time
-// behavior or diagnostics change so the Browser Console reveals which build is
-// actually running (vs. a stale module cache). Bump on every push that touches
-// runtime code.
-export const BUILD_VERSION = "1.0.0+downloads-api.15";
+// Build tag — mirrors theme.json's `version` for shipped releases, and gets a
+// `+tag.N` suffix for in-progress iterative builds so the Browser Console
+// reveals which build is actually running (vs. a stale module cache).
+export const BUILD_VERSION = "1.0.1";
 
 export const CONFIG = {
   // Init polling — wait for gBrowser/gZenWorkspaces/separator to appear at startup.

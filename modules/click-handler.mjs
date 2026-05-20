@@ -21,7 +21,7 @@ import { showPreviewModal } from "./preview-modal.mjs";
 
 // Module-version stamp so we can confirm the latest copy is loaded in the running window.
 // If you don't see this in the Browser Console after restart, ES module cache is stale.
-console.log(`${LOG} click-handler.mjs loaded — build ${BUILD_VERSION}`);
+console.log(`${LOG} click-handler.mjs loaded — v${BUILD_VERSION}`);
 
 const getTidyButton = () =>
   window.gZenWorkspaces?.activeWorkspaceElement?.querySelector(`#${CONFIG.BUTTON_ID}`) || null;
@@ -76,7 +76,7 @@ export const handleOrganizeClick = async () => {
     return;
   }
 
-  console.log(`${LOG} click START — build ${BUILD_VERSION}`);
+  console.log(`${LOG} click START — v${BUILD_VERSION}`);
 
   // 1. Merge any duplicate-name groups before lookups assume uniqueness.
   const consolidation = consolidateDuplicateGroups(workspaceId);

@@ -19,7 +19,7 @@
   "readme": "README.md",
   "image": "image.png",
   "author": "franklinl",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "preferences": "preferences.json",
   "tags": [
     "Tabs",
@@ -29,6 +29,6 @@
     "Ollama"
   ],
   "createdAt": "2026-05-15",
-  "updatedAt": "2026-05-18",
+  "updatedAt": "2026-05-19",
   "fork": ["zen"]
 }

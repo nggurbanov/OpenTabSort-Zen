@@ -14,7 +14,7 @@ import {
 } from "./widget.mjs";
 import { fetchZenColorsFromBrowser } from "./color-picker.mjs";
 
-console.log(`[ZenTabWand] prefs-ui.mjs loaded — build ${BUILD_VERSION}`);
+console.log(`[ZenTabWand] prefs-ui.mjs loaded — v${BUILD_VERSION}`);
 
 let settingsObserver = null;
 
