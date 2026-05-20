@@ -377,7 +377,7 @@ export const buildBackupRestoreSection = () => {
 
   const exportBtn = h("button", { class: "zao-backup-btn", text: "Export" });
   exportBtn.type = "button";
-  exportBtn.title = "Download current rules + skip-domains as a JSON file";
+  exportBtn.title = "Save current rules + skip-domains as a JSON file";
   exportBtn.addEventListener("click", () => {
     const payload = {
       rules: readRulesPref() || [],
@@ -392,36 +392,49 @@ export const buildBackupRestoreSection = () => {
       .replace(/\..*$/, "")
       .replace(/^(\d{8})(\d{6})$/, "$1-$2"); // 20260519-223045
     const filename = `wand-backup-${payload.rules.length}groups-${ts}.json`;
-    try {
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElementNS("http://www.w3.org/1999/xhtml", "a");
-      a.href = url;
-      a.download = filename;
-      a.style.display = "none";
-      document.documentElement.appendChild(a);
-      a.click();
-      a.remove();
-      // Defer revoke so the browser has time to start the download from the
-      // blob URL — revoking immediately can race with Firefox's download
-      // handler on slower machines.
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    const finish = (label) => {
       const original = exportBtn.textContent;
-      exportBtn.textContent = "Downloaded!";
-      setTimeout(() => { exportBtn.textContent = original; }, 1200);
-      console.log(`${LOG} exported ${payload.rules.length} rule(s) + ${payload.skipDomains.length} skip-domain(s) to ${filename}`);
-    } catch (e) {
-      console.warn(`${LOG} download failed; falling back to clipboard:`, e);
+      exportBtn.textContent = label;
+      setTimeout(() => { exportBtn.textContent = original; }, 1500);
+    };
+    const fallbackToClipboard = () => {
       try {
         navigator.clipboard.writeText(json);
-        const original = exportBtn.textContent;
-        exportBtn.textContent = "Copied!";
-        setTimeout(() => { exportBtn.textContent = original; }, 1200);
-      } catch (clipErr) {
-        console.error(`${LOG} clipboard fallback also failed:`, clipErr);
+        finish("Copied!");
+      } catch (e) {
+        console.error(`${LOG} clipboard fallback failed:`, e);
         console.log(json);
-        alert("Couldn't download or copy. The JSON has been logged to the Browser Console.");
+        alert("Couldn't save or copy. The JSON has been logged to the Browser Console.");
       }
+    };
+
+    // Firefox chrome doesn't honor the HTML `<a download>` attribute — that's
+    // a content-page-only feature. The proper path here is nsIFilePicker for
+    // a save-as dialog, then IOUtils.writeUTF8 to write the bytes.
+    try {
+      const Cc = window.Components?.classes;
+      const Ci = window.Components?.interfaces;
+      if (!Cc || !Ci) throw new Error("Components.classes / .interfaces not exposed in this scope");
+      const fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
+      fp.init(window, "Save Zen Tab Wand backup", Ci.nsIFilePicker.modeSave);
+      fp.appendFilter("JSON file (*.json)", "*.json");
+      fp.defaultString = filename;
+      fp.defaultExtension = "json";
+      fp.open(async (result) => {
+        if (result === Ci.nsIFilePicker.returnCancel) return;
+        try {
+          await IOUtils.writeUTF8(fp.file.path, json);
+          console.log(`${LOG} exported ${payload.rules.length} rule(s) + ${payload.skipDomains.length} skip-domain(s) to ${fp.file.path}`);
+          finish("Saved!");
+        } catch (e) {
+          console.error(`${LOG} writeUTF8 failed:`, e);
+          fallbackToClipboard();
+        }
+      });
+    } catch (e) {
+      console.warn(`${LOG} nsIFilePicker unavailable, falling back to clipboard:`, e);
+      fallbackToClipboard();
     }
   });
   bar.appendChild(exportBtn);
