@@ -146,12 +146,31 @@ export const moveTabsToTop = (tabs, workspaceId) => {
     console.log(`${LOG} moveTabsToTop: tabsContainer not found on activeWorkspaceElement`);
     return 0;
   }
+  // gBrowser.ungroupTab is Firefox's real "remove from group" API (see
+  // mozilla-central tabbrowser tabgroup.js). Just reparenting the DOM via
+  // insertBefore leaves Zen's tab-group bookkeeping intact — Zen then fires a
+  // TabGrouped event asynchronously to re-attach the tab, which both undoes
+  // our move AND grows the rule via the auto-add hook (because the async
+  // event escapes our synchronous suppression window).
+  const ungroupApi = typeof gBrowser?.ungroupTab === "function" ? gBrowser.ungroupTab.bind(gBrowser) : null;
+  if (!ungroupApi) {
+    console.warn(`${LOG} moveTabsToTop: gBrowser.ungroupTab not available — falling back to DOM-only move (may be silently re-grouped by Zen)`);
+  }
   const topAnchor = tabsContainer.firstChild;
   let moved = 0;
   let skipped = 0;
+  let ungrouped = 0;
   for (const tab of tabs) {
     if (!tab?.isConnected) { skipped++; continue; }
     try {
+      // Tell Zen's grouping system the tab is leaving its group BEFORE we
+      // reparent. This emits TabUngrouped (not TabGrouped) so the auto-add
+      // hook stays quiet.
+      if (ungroupApi && tab.closest("tab-group")) {
+        try { ungroupApi(tab); ungrouped++; } catch (e) {
+          console.warn(`${LOG} moveTabsToTop: ungroupTab failed for tab, continuing with DOM move:`, e);
+        }
+      }
       if (topAnchor && topAnchor.isConnected) {
         tabsContainer.insertBefore(tab, topAnchor);
       } else {
@@ -159,10 +178,11 @@ export const moveTabsToTop = (tabs, workspaceId) => {
       }
       moved++;
     } catch (e) {
-      console.error(`${LOG} moveTabsToTop: insertBefore failed:`, e);
+      console.error(`${LOG} moveTabsToTop: failed:`, e);
     }
   }
   if (skipped > 0) console.log(`${LOG} moveTabsToTop: skipped ${skipped} disconnected tab(s)`);
+  if (ungrouped > 0) console.log(`${LOG} moveTabsToTop: ungrouped ${ungrouped} tab(s) via gBrowser.ungroupTab before move`);
   return moved;
 };
 
@@ -249,9 +269,18 @@ export const dissolveStaleGroups = (workspaceId, rules) => {
       groupEl.querySelectorAll(`tab[zen-workspace-id="${workspaceId}"]`)
     );
 
+    // Tell Zen the tabs are leaving their group via the real API before
+    // DOM-reparenting, so Zen doesn't fire a stale-target TabGrouped after
+    // we've ripped the group out (which would race into the auto-add hook).
+    const ungroupApi = typeof gBrowser?.ungroupTab === "function" ? gBrowser.ungroupTab.bind(gBrowser) : null;
     for (const tab of tabsInGroup) {
       if (!tab.isConnected) continue;
       try {
+        if (ungroupApi) {
+          try { ungroupApi(tab); } catch (e) {
+            console.warn(`${LOG} dissolveStaleGroups: ungroupTab failed, continuing with DOM move:`, e);
+          }
+        }
         if (topAnchor && topAnchor.isConnected) {
           tabsContainer.insertBefore(tab, topAnchor);
         } else {
