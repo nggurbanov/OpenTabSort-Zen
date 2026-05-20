@@ -2,8 +2,7 @@
 
 A one-click tab tidier for [Zen Browser](https://zen-browser.app), installed via the [Sine](https://github.com/CosmoCreeper/Sine) mod loader. Click the wand in your toolbar, and your open tabs get sorted into groups.
 
-<!-- SCREENSHOT — hero shot: a sidebar with messy unsorted tabs on the left, then the same sidebar with tabs neatly grouped after a wand click on the right. Place at `docs/images/hero-before-after.png` and uncomment the line below. -->
-<!-- ![Before and after clicking the wand](docs/images/hero-before-after.png) -->
+![Before and after clicking the wand](docs/images/hero-before-after.png)
 
 ## How it works
 
@@ -20,8 +19,7 @@ In Zen → Sine → Marketplace, search for "Zen Tab Wand" and install. Or sidel
 
 After install, a wand icon appears in your toolbar's workspace separator. Right-click the icon to open settings.
 
-<!-- SCREENSHOT — close-up of the wand button in the workspace separator, ideally with the cursor hovered to show the tooltip. Place at `docs/images/wand-button.png`. -->
-<!-- ![Wand button in the toolbar](docs/images/wand-button.png) -->
+![Wand button in the toolbar](docs/images/wand-button.png)
 
 ## Quick start
 
@@ -30,8 +28,7 @@ After install, a wand icon appears in your toolbar's workspace separator. Right-
 3. Click the **wand button** in the toolbar. Your matching tabs are sorted instantly.
 4. (Optional) Pick an **AI engine** for tabs the rules don't cover — see below.
 
-<!-- SCREENSHOT — full settings panel showing Group Rules editor (with a few example rules and color swatches), Skip Domains row, Backup & Restore buttons, and the AI Sorting controls. Place at `docs/images/settings-panel.png`. -->
-<!-- ![Zen Tab Wand settings panel](docs/images/settings-panel.png) -->
+![Zen Tab Wand settings panel](docs/images/settings-panel.png)
 
 ## Growing rules from the tab right-click
 
@@ -39,8 +36,7 @@ Right-click any tab → **Add "host" to Rule…** — a submenu pops up listing 
 
 The tab doesn't move — only the rule grows. Click the wand afterwards to actually sort tabs based on the new rule.
 
-<!-- SCREENSHOT — the tab right-click menu open, with the "Add 'host' to Rule…" parent item hovered so the submenu is showing a few rules + the Skip entry at the bottom. Place at `docs/images/right-click-submenu.png`. -->
-<!-- ![Right-click "Add to Rule…" submenu](docs/images/right-click-submenu.png) -->
+![Right-click "Add to Rule…" submenu](docs/images/right-click-submenu.png)
 
 ## AI engines
 
@@ -109,8 +105,7 @@ If you have questions about Ollama itself (other models, GPU compatibility, remo
 | **Fresh categories** | AI re-tidies **all** tabs into fresh categories, ignoring your rules. Like Arc Browser's Tidy. |
 | **Plan Mode** | Shows the proposed plan in a modal first. You toggle each group keep/skip, optionally click "Re-assign" to redo the unkept tabs, then Apply. |
 
-<!-- SCREENSHOT — the Plan Mode modal mid-decision: proposed groups with their tab lists, one group toggled off (greyed), the Re-assign + Apply + Close buttons visible at the bottom. Place at `docs/images/plan-mode-modal.png`. -->
-<!-- ![Plan Mode modal](docs/images/plan-mode-modal.png) -->
+![Plan Mode modal](docs/images/plan-mode-modal.png)
 
 ## Other settings
 
