@@ -84,12 +84,40 @@ tab-group.zao-minimal {
   align-items: center;
 }
 
-/* Backup & Restore subsection — standalone block between the rules editor card
-   and the Look & Feel separator. The header uses the same XUL vbox + <hr> +
-   <label class="separator-label"> markup Sine uses for its native sections, so
-   it inherits chrome styling automatically — no overrides needed. */
+/* Skip-domains editor — a single pill row beneath the "Skip Domains" Sine
+   separator. Reuses the rules table's .zao-pill / .zao-pill-add / .zao-pill-input
+   styling so it looks identical to the Domains column of a rule row. */
+.zao-skip-editor {
+  display: block !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 8px 12px !important;
+  margin: 8px 0 !important;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.zao-skip-row {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+  align-items: center !important;
+}
+
+.zao-skip-empty {
+  opacity: 0.6 !important;
+  font-style: italic !important;
+  font-size: 12px !important;
+  padding-right: 6px !important;
+}
+
+/* Backup & Restore — just the button row beneath the Sine separator.
+   Header + description come from Sine's native separator + injected
+   .zao-pref-description, no XUL markup created here. */
 .zao-backup-section {
-  margin: 10px 0 !important;
+  margin: 8px 0 !important;
+  padding: 0 12px !important;
 }
 
 .zao-backup-row {

@@ -53,6 +53,30 @@ export const writeRulesPref = (rules) => {
   }
 };
 
+// Skip-domain list: hostnames or `*.host` patterns the tidy click never touches.
+// Tabs matching any pattern are ejected from their group and parked at the top
+// of the workspace before Pass 1 runs (see click-handler.mjs).
+export const readSkipDomainsPref = () => {
+  try {
+    const raw = Services.prefs.getStringPref(CONFIG.SKIP_DOMAINS_PREF, "");
+    if (!raw.trim()) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((d) => String(d).trim()).filter((d) => d.length > 0);
+  } catch (e) {
+    console.warn(`${LOG} skip-domains pref parse failed:`, e);
+    return [];
+  }
+};
+
+export const writeSkipDomainsPref = (domains) => {
+  try {
+    Services.prefs.setStringPref(CONFIG.SKIP_DOMAINS_PREF, JSON.stringify(domains));
+  } catch (e) {
+    console.error(`${LOG} failed to write skip-domains pref:`, e);
+  }
+};
+
 // Validate the structure of a rules.json file payload. Throws on bad input.
 export const validateRules = (data) => {
   if (!data || !Array.isArray(data.rules)) {
@@ -99,6 +123,18 @@ export const loadRules = async () => {
 export const isMinimalStyle = () => {
   try {
     return Services.prefs.getBoolPref(CONFIG.MINIMAL_STYLE_PREF, false);
+  } catch {
+    return false;
+  }
+};
+
+// When ON, the tidy click ejects any tab from a rule-named group if its
+// hostname isn't in that rule's `domains[]`. Off by default — preserves the
+// historical behavior where Pass 1 only moves matching tabs, leaving mismatched
+// tabs where the user (or AI) put them.
+export const isStrictRulesEnforced = () => {
+  try {
+    return Services.prefs.getBoolPref(CONFIG.STRICT_RULES_PREF, false);
   } catch {
     return false;
   }

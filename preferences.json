@@ -6,12 +6,28 @@
 
   {
     "type": "separator",
+    "label": "Skip Domains"
+  },
+
+  {
+    "type": "separator",
+    "label": "Backup & Restore"
+  },
+
+  {
+    "type": "separator",
     "label": "Look & Feel"
   },
   {
     "type": "checkbox",
     "label": "Minimal style — strip group colors and match Zen's address-bar styling",
     "property": "extensions.zen-auto-organize.minimal-style",
+    "defaultValue": false
+  },
+  {
+    "type": "checkbox",
+    "label": "Strict rule enforcement — eject tabs from a group when their hostname isn't in that group's rule",
+    "property": "extensions.zen-auto-organize.strict-rules",
     "defaultValue": false
   },
 

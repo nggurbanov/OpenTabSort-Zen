@@ -5,7 +5,13 @@
 
 import { CONFIG, LOG, DEFAULT_RULES, h } from "./config.mjs";
 import { readRulesPref, writeRulesPref, getAIEngine } from "./rules.mjs";
-import { buildRulesEditor, buildBackupRestoreSection, teardownRulesPrefObserver } from "./widget.mjs";
+import {
+  buildRulesEditor,
+  buildSkipDomainsEditor,
+  buildBackupRestoreSection,
+  teardownRulesPrefObserver,
+  teardownSkipPrefObserver,
+} from "./widget.mjs";
 import { fetchZenColorsFromBrowser } from "./color-picker.mjs";
 
 console.log("[AutoOrganize] prefs-ui.mjs loaded (v1.0.0 build)");
@@ -50,6 +56,14 @@ const SECTION_DESCRIPTIONS = [
   [
     "Group Rules",
     "Add groups and domains below; changes save instantly.",
+  ],
+  [
+    "Skip Domains",
+    "Hostnames in this list are never touched by the tidy click — matching tabs are ejected from any group and parked at the top of the workspace. Useful for tabs you want to always keep visible and ungrouped.",
+  ],
+  [
+    "Backup & Restore",
+    "Export your rules and skip list as JSON for safekeeping, or import a previously-saved file to restore them.",
   ],
   [
     "Look & Feel",
@@ -147,36 +161,56 @@ const teardownEnginePrefObserver = () => {
   enginePrefObserver = null;
 };
 
-const performInject = (dialog, rulesSeparator) => {
+// Locate a Sine separator by the prefix of its visible label, returning the
+// outer container element (so injectAfter places content as a sibling of it).
+const findSeparatorContainer = (dialog, prefix) => {
+  for (const lbl of dialog.querySelectorAll(".separator-label")) {
+    if (lbl.textContent.trim().startsWith(prefix)) {
+      return lbl.closest("vbox") || lbl.parentElement;
+    }
+  }
+  return null;
+};
+
+const insertAfter = (parent, newNode, refNode) => {
+  if (refNode && refNode.parentNode === parent) {
+    parent.insertBefore(newNode, refNode.nextSibling);
+  } else {
+    parent.insertBefore(newNode, parent.firstChild);
+  }
+};
+
+const performInject = (dialog) => {
   if (dialog.querySelector(".zao-rules-editor")) return;
 
   const content = dialog.querySelector(".sineItemPreferenceDialogContent");
   if (!content) return;
 
-  // Seed the pref with defaults on first open if currently empty.
+  // Seed the rules pref with defaults on first open if currently empty.
   let initial = readRulesPref();
   if (!initial || initial.length === 0) {
     initial = JSON.parse(JSON.stringify(DEFAULT_RULES));
     writeRulesPref(initial);
   }
 
-  const widget = buildRulesEditor(initial);
+  const rulesEditor = buildRulesEditor(initial);
+  const skipEditor = buildSkipDomainsEditor();
   const backupSection = buildBackupRestoreSection();
 
-  if (rulesSeparator && rulesSeparator.parentNode === content) {
-    content.insertBefore(widget, rulesSeparator.nextSibling);
-    content.insertBefore(backupSection, widget.nextSibling);
-  } else {
-    content.insertBefore(widget, content.firstChild);
-    content.insertBefore(backupSection, widget.nextSibling);
-  }
+  // Each section's content lives as a sibling immediately after its Sine
+  // separator. injectSectionDescriptions runs next and will insert its
+  // description paragraph BETWEEN the separator and our content (because it
+  // checks `nextElementSibling` for a description and inserts at separator+1
+  // when not found).
+  insertAfter(content, rulesEditor, findSeparatorContainer(dialog, "Group Rules"));
+  insertAfter(content, skipEditor, findSeparatorContainer(dialog, "Skip Domains"));
+  insertAfter(content, backupSection, findSeparatorContainer(dialog, "Backup & Restore"));
+
   tagSeparatorContainers(dialog);
   injectSectionDescriptions(dialog);
-  // Apply initial visibility AND install the observer that re-applies it when
-  // the user changes the engine dropdown.
   setupEnginePrefObserver();
   updateConditionalFields(dialog);
-  console.log(`${LOG} injected rules editor into Sine settings dialog`);
+  console.log(`${LOG} injected rules + skip + backup sections into Sine settings dialog`);
 };
 
 // Sine's loadPrefs() is async — the dialog is added to DOM before its content is
@@ -223,14 +257,14 @@ const onOurDialogFound = (dialog) => {
       }
     }
     if (separator) {
-      try { performInject(dialog, separator); }
+      try { performInject(dialog); }
       catch (e) { console.error(`${LOG} inject failed:`, e); }
       return;
     }
     attempts++;
     if (attempts >= CONFIG.INJECT_MAX_POLL_ATTEMPTS) {
       console.warn(`${LOG} Rules separator not found after ${attempts * CONFIG.INJECT_POLL_INTERVAL_MS}ms; injecting at content top`);
-      try { performInject(dialog, null); }
+      try { performInject(dialog); }
       catch (e) { console.error(`${LOG} inject failed:`, e); }
       return;
     }
@@ -287,4 +321,5 @@ export const teardownSettingsObserver = () => {
   }
   teardownEnginePrefObserver();
   teardownRulesPrefObserver();
+  teardownSkipPrefObserver();
 };

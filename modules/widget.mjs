@@ -4,7 +4,7 @@
 // external changes (TabGrouped hook) refresh the table in real time.
 
 import { CONFIG, LOG, h } from "./config.mjs";
-import { readRulesPref, writeRulesPref } from "./rules.mjs";
+import { readRulesPref, writeRulesPref, readSkipDomainsPref, writeSkipDomainsPref } from "./rules.mjs";
 import {
   openColorPopover,
   updateSwatchAppearance,
@@ -237,43 +237,153 @@ export const buildRulesEditor = (rules) => {
 // Standalone Backup & Restore section, injected by prefs-ui.mjs as a sibling
 // after the rules editor (not part of the editor card itself). Reads/writes the
 // rules pref directly so any open editor refreshes via its own pref observer.
-const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+// ──────────────────────────────────────────────────────────────────────────────
+// Skip-domains editor — simple pill list. Hostnames in this list never get
+// touched by the tidy click; they're ejected from any group and parked at the
+// top of the workspace before Pass 1 runs (see click-handler.mjs).
+// ──────────────────────────────────────────────────────────────────────────────
 
+let skipPrefObserver = null;
+
+export const buildSkipDomainsEditor = () => {
+  const initial = readSkipDomainsPref();
+  const domains = Array.isArray(initial) ? [...initial] : [];
+  const container = h("div", { class: "zao-skip-editor" });
+  const persist = () => writeSkipDomainsPref(domains);
+
+  let render;
+
+  const renderPill = (idx) => {
+    const pill = h("span", { class: "zao-pill" });
+    const text = h("span", { text: domains[idx] });
+    pill.appendChild(text);
+    const remove = h("button", { class: "zao-pill-remove", text: "×" });
+    remove.type = "button";
+    remove.title = "Remove from skip list";
+    remove.addEventListener("click", () => {
+      domains.splice(idx, 1);
+      persist();
+      render();
+    });
+    pill.appendChild(remove);
+    return pill;
+  };
+
+  const renderAddPill = () => {
+    const addBtn = h("button", { class: "zao-pill-add", text: "+" });
+    addBtn.type = "button";
+    addBtn.title = "Add a domain to skip";
+    addBtn.addEventListener("click", () => {
+      const input = h("input", { class: "zao-pill-input" });
+      input.type = "text";
+      input.placeholder = "host.com or *.host.com";
+
+      let done = false;
+      const commit = () => {
+        if (done) return;
+        done = true;
+        const val = input.value.trim();
+        if (val && !domains.includes(val)) {
+          domains.push(val);
+          persist();
+        }
+        render();
+      };
+      const cancel = () => {
+        if (done) return;
+        done = true;
+        render();
+      };
+
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        else if (e.key === "Escape") { e.preventDefault(); cancel(); }
+      });
+      input.addEventListener("blur", () => setTimeout(commit, 0));
+
+      addBtn.replaceWith(input);
+      input.focus();
+    });
+    return addBtn;
+  };
+
+  render = () => {
+    container.replaceChildren();
+    const row = h("div", { class: "zao-skip-row" });
+    if (domains.length === 0) {
+      const empty = h("span", {
+        class: "zao-skip-empty",
+        text: "No domains skipped — add hostnames you never want the tidy click to touch.",
+      });
+      row.appendChild(empty);
+    } else {
+      domains.forEach((_, idx) => row.appendChild(renderPill(idx)));
+    }
+    row.appendChild(renderAddPill());
+    container.appendChild(row);
+  };
+
+  // Refresh on external writes (e.g. Import overwriting the pref).
+  const refreshFromPref = () => {
+    if (!container.isConnected) return;
+    const fresh = readSkipDomainsPref();
+    if (JSON.stringify(fresh) === JSON.stringify(domains)) return;
+    domains.length = 0;
+    domains.push(...fresh);
+    render();
+  };
+  container._zaoSkipRefresh = refreshFromPref;
+
+  if (skipPrefObserver) {
+    try { Services.prefs.removeObserver(CONFIG.SKIP_DOMAINS_PREF, skipPrefObserver); } catch {}
+    skipPrefObserver = null;
+  }
+  skipPrefObserver = {
+    observe(_, topic, data) {
+      if (topic !== "nsPref:changed" || data !== CONFIG.SKIP_DOMAINS_PREF) return;
+      if (!container.isConnected) {
+        try { Services.prefs.removeObserver(CONFIG.SKIP_DOMAINS_PREF, skipPrefObserver); } catch {}
+        skipPrefObserver = null;
+        return;
+      }
+      refreshFromPref();
+    },
+  };
+  try { Services.prefs.addObserver(CONFIG.SKIP_DOMAINS_PREF, skipPrefObserver); } catch {}
+
+  render();
+  return container;
+};
+
+export const teardownSkipPrefObserver = () => {
+  if (!skipPrefObserver) return;
+  try { Services.prefs.removeObserver(CONFIG.SKIP_DOMAINS_PREF, skipPrefObserver); } catch {}
+  skipPrefObserver = null;
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Backup & Restore — just the Export / Import buttons. The section header and
+// description come from Sine's native separator (declared in preferences.json)
+// and our SECTION_DESCRIPTIONS list (injected by prefs-ui.mjs).
+//
+// Export shape (v1):  { "rules": [...], "skipDomains": [...] }
+// Import accepts:
+//   • that object shape (overwrites both prefs)
+//   • a bare array (treated as rules-only, for backwards compat with v0 exports)
+// ──────────────────────────────────────────────────────────────────────────────
 export const buildBackupRestoreSection = () => {
   const section = h("div", { class: "zao-backup-section" });
-
-  // Mirror Sine's separator markup *exactly* so styling is shared:
-  //   <vbox class="zao-section-header-row">
-  //     <hr/>
-  //     <label class="separator-label">Backup & Restore</label>
-  //   </vbox>
-  // Using the same elements/classes means our header inherits every chrome CSS
-  // rule Sine applies to its own separators, and there's nothing to maintain
-  // in parallel when Sine's styling evolves.
-  const headerRow = document.createElementNS(XUL_NS, "vbox");
-  headerRow.className = "zao-section-header-row";
-  const rule = document.createElementNS("http://www.w3.org/1999/xhtml", "hr");
-  headerRow.appendChild(rule);
-  const label = document.createElementNS("http://www.w3.org/1999/xhtml", "label");
-  label.className = "separator-label";
-  label.textContent = "Backup & Restore";
-  headerRow.appendChild(label);
-  section.appendChild(headerRow);
-
-  const desc = h("div", {
-    class: "zao-pref-description",
-    text: "Export your rules as JSON for safekeeping, or import a previously-saved file to restore them.",
-  });
-  section.appendChild(desc);
-
   const bar = h("div", { class: "zao-backup-row" });
 
   const exportBtn = h("button", { class: "zao-backup-btn", text: "Export" });
   exportBtn.type = "button";
-  exportBtn.title = "Copy current rules as JSON to the clipboard";
+  exportBtn.title = "Copy current rules + skip-domains as JSON to the clipboard";
   exportBtn.addEventListener("click", () => {
-    const current = readRulesPref() || [];
-    const json = JSON.stringify(current, null, 2);
+    const payload = {
+      rules: readRulesPref() || [],
+      skipDomains: readSkipDomainsPref() || [],
+    };
+    const json = JSON.stringify(payload, null, 2);
     try {
       navigator.clipboard.writeText(json);
       const original = exportBtn.textContent;
@@ -289,7 +399,7 @@ export const buildBackupRestoreSection = () => {
 
   const importBtn = h("button", { class: "zao-backup-btn", text: "Import…" });
   importBtn.type = "button";
-  importBtn.title = "Replace rules with a JSON file";
+  importBtn.title = "Replace rules + skip-domains from a JSON file";
   importBtn.addEventListener("click", () => {
     const picker = document.createElementNS("http://www.w3.org/1999/xhtml", "input");
     picker.type = "file";
@@ -302,23 +412,53 @@ export const buildBackupRestoreSection = () => {
       try {
         const text = await file.text();
         const parsed = JSON.parse(text);
-        if (!Array.isArray(parsed)) throw new Error("Top-level must be an array");
-        const valid = parsed
-          .map((r) => ({
-            name: typeof r?.name === "string" ? r.name.trim() : "",
-            domains: Array.isArray(r?.domains)
-              ? r.domains.map((d) => String(d).trim()).filter(Boolean)
-              : [],
-            ...(typeof r?.color === "string" ? { color: r.color } : {}),
-          }))
-          .filter((r) => r.name && r.domains.length);
-        if (valid.length === 0) throw new Error("No valid rules found (each needs name + domains)");
-        const current = readRulesPref() || [];
-        if (!window.confirm(`Replace your ${current.length} current rule(s) with ${valid.length} imported rule(s)?`)) return;
-        writeRulesPref(valid);
-        console.log(`${LOG} imported ${valid.length} rule(s)`);
+        let importedRules = null;
+        let importedSkip = null;
+        if (Array.isArray(parsed)) {
+          // Legacy v0 format — array of rules only.
+          importedRules = parsed;
+        } else if (parsed && typeof parsed === "object") {
+          if (Array.isArray(parsed.rules)) importedRules = parsed.rules;
+          if (Array.isArray(parsed.skipDomains)) importedSkip = parsed.skipDomains;
+        } else {
+          throw new Error("Top-level must be an array or { rules, skipDomains } object");
+        }
+        if (!importedRules && !importedSkip) throw new Error("Nothing to import (no rules or skipDomains found)");
+
+        let validRules = null;
+        if (importedRules) {
+          validRules = importedRules
+            .map((r) => ({
+              name: typeof r?.name === "string" ? r.name.trim() : "",
+              domains: Array.isArray(r?.domains)
+                ? r.domains.map((d) => String(d).trim()).filter(Boolean)
+                : [],
+              ...(typeof r?.color === "string" ? { color: r.color } : {}),
+            }))
+            .filter((r) => r.name && r.domains.length);
+          if (validRules.length === 0 && !importedSkip) {
+            throw new Error("No valid rules in import (each needs name + domains)");
+          }
+        }
+
+        let validSkip = null;
+        if (importedSkip) {
+          validSkip = importedSkip.map((d) => String(d).trim()).filter(Boolean);
+        }
+
+        const current = {
+          rules: (readRulesPref() || []).length,
+          skip: (readSkipDomainsPref() || []).length,
+        };
+        const summaryLines = [];
+        if (validRules) summaryLines.push(`Rules:  ${current.rules} → ${validRules.length}`);
+        if (validSkip) summaryLines.push(`Skip:   ${current.skip} → ${validSkip.length}`);
+        if (!window.confirm(`Replace your settings?\n\n${summaryLines.join("\n")}`)) return;
+        if (validRules) writeRulesPref(validRules);
+        if (validSkip) writeSkipDomainsPref(validSkip);
+        console.log(`${LOG} imported${validRules ? ` ${validRules.length} rule(s)` : ""}${validSkip ? ` ${validSkip.length} skip-domain(s)` : ""}`);
       } catch (e) {
-        console.error(`${LOG} rules import failed:`, e);
+        console.error(`${LOG} import failed:`, e);
         alert(`Import failed: ${e.message}`);
       }
     });

@@ -4,16 +4,17 @@
 
 import { CONFIG, LOG } from "./config.mjs";
 // CONFIG also exposes the pref name we read inside the AI gate diagnostic below.
-import { loadRules, isMinimalStyle, getAIEngine, getOllamaHost, getOllamaModel, getAINewGroupBehavior, getAIExistingBehavior } from "./rules.mjs";
+import { loadRules, readSkipDomainsPref, isMinimalStyle, isStrictRulesEnforced, getAIEngine, getOllamaHost, getOllamaModel, getAINewGroupBehavior, getAIExistingBehavior } from "./rules.mjs";
 import { getEligibleTabs } from "./tabs.mjs";
 import {
   consolidateDuplicateGroups,
   dissolveStaleGroups,
   dissolveEmptyGroups,
+  moveTabsToTop,
   moveUngroupedToTop,
   syncAllGroupColors,
 } from "./groups.mjs";
-import { runPass1, applyPass1 } from "./pass1.mjs";
+import { runPass1, applyPass1, matchesDomain } from "./pass1.mjs";
 import { runPass2, applyPass2 } from "./ai.mjs";
 import { checkOllamaReady, reportOllamaError, normalizeOllamaHost, runPass2Ollama, runPass2OllamaFresh, classifyExistingGroupsBatch } from "./ollama.mjs";
 import { showPreviewModal } from "./preview-modal.mjs";
@@ -91,9 +92,32 @@ export const handleOrganizeClick = async () => {
   }
 
   // 4. Enumerate eligible tabs (post-dissolution state).
-  const { tabs } = getEligibleTabs();
-  if (tabs.length === 0) {
+  const allTabs = getEligibleTabs().tabs;
+  if (allTabs.length === 0) {
     console.log(`${LOG} no eligible tabs in workspace ${workspaceId}`);
+    return;
+  }
+
+  // 4b. Handle skip-domains. Tabs whose hostname matches any skip pattern get
+  // ejected from any current group and parked at the top of the workspace,
+  // then excluded from the rest of the pipeline (Pass 1 + Pass 2). The skip
+  // list is authoritative — re-applied on every click, so manually moving a
+  // skipped tab into a group is reverted on the next tidy.
+  const skipPatterns = readSkipDomainsPref();
+  let tabs = allTabs;
+  if (skipPatterns.length > 0) {
+    const skipped = allTabs.filter((t) =>
+      skipPatterns.some((p) => matchesDomain(t.hostname, p))
+    );
+    if (skipped.length > 0) {
+      const moved = moveTabsToTop(skipped.map((s) => s._tab), workspaceId);
+      console.log(`${LOG} skip-domains: parked ${moved} tab(s) at the top of the workspace`);
+      const skippedSet = new Set(skipped);
+      tabs = allTabs.filter((t) => !skippedSet.has(t));
+    }
+  }
+  if (tabs.length === 0) {
+    console.log(`${LOG} no non-skipped eligible tabs in workspace ${workspaceId}`);
     return;
   }
 
@@ -160,6 +184,27 @@ export const handleOrganizeClick = async () => {
       console.log(`${LOG} Applied: created ${result.createdGroups} new group(s), moved ${result.movedToNew} tab(s) into new groups, ${result.movedToExisting} tab(s) into existing groups.`);
       if (result.errors.length > 0) {
         console.warn(`${LOG} ${result.errors.length} error(s) during apply:`, result.errors);
+      }
+
+      // 6b. Strict rule enforcement (opt-in via Look & Feel toggle). After
+      // Pass 1's moves, eject any unmatched tab that's still parked inside a
+      // group — e.g. a `photos.google.com` tab that's inside "Google Utils"
+      // but isn't in that rule's `domains[]`. Ejected tabs go to the top of
+      // the workspace; if AI Pass 2 runs next, it gets a crack at re-placing
+      // them. Strict mode never fires in fresh/identify-only modes — those
+      // bypass Pass 1 entirely.
+      if (isStrictRulesEnforced()) {
+        const stillGrouped = unmatched.filter((t) => t.currentGroup && t._tab?.isConnected);
+        if (stillGrouped.length > 0) {
+          const ejected = moveTabsToTop(stillGrouped.map((t) => t._tab), workspaceId);
+          if (ejected > 0) {
+            console.log(`${LOG} Strict: ejected ${ejected} unmatched tab(s) from rule groups`);
+            // The unmatched array's items now have currentGroup === null
+            // (their on-DOM state changed). Update the planning shape so
+            // downstream Pass 2 / diagnostics see the new reality.
+            for (const t of stillGrouped) t.currentGroup = null;
+          }
+        }
       }
     } else {
       console.log(`${LOG} Pass 1 apply skipped — ${newGroupBehavior} mode will ${isIdentifyOnly ? "preview" : "reclassify"} all ${tabs.length} tab(s)`);

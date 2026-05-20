@@ -131,6 +131,32 @@ export const syncAllGroupColors = (workspaceId, rules) => {
   return touched;
 };
 
+// Eject specific tabs out of whatever group they're in and park them at the top
+// of the workspace's tab list. Used for skip-domain matches before Pass 1, so
+// those tabs become ungrouped and stay ungrouped for the rest of the pipeline.
+// Returns the number of tabs moved.
+export const moveTabsToTop = (tabs, workspaceId) => {
+  if (!workspaceId || !tabs?.length) return 0;
+  const tabsContainer = window.gZenWorkspaces?.activeWorkspaceElement?.tabsContainer;
+  if (!tabsContainer) return 0;
+  const topAnchor = tabsContainer.firstChild;
+  let moved = 0;
+  for (const tab of tabs) {
+    if (!tab?.isConnected) continue;
+    try {
+      if (topAnchor && topAnchor.isConnected) {
+        tabsContainer.insertBefore(tab, topAnchor);
+      } else {
+        tabsContainer.insertBefore(tab, tabsContainer.firstChild);
+      }
+      moved++;
+    } catch (e) {
+      console.error(`${LOG} error moving skipped tab to top:`, e);
+    }
+  }
+  return moved;
+};
+
 // After Pass 1, push any remaining ungrouped tab in the workspace to the top of the
 // workspace's tab list (preserving relative DOM order).
 export const moveUngroupedToTop = (workspaceId) => {
