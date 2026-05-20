@@ -38,6 +38,52 @@ export const setTabGroupedHookSuppressed = (val) => {
 };
 const isHookSuppressed = () => _suppressionCount > 0;
 
+// Registry of recently-ejected tabs. We track them three ways because the
+// `tab` reference in the asynchronous TabGrouped event has occasionally
+// turned out to NOT be the same JavaScript object we set the expando on
+// (Zen may replace the element during re-attach). Looking up via multiple
+// stable identifiers makes the guard robust to whichever quirk applies.
+//
+//   Map key options (any one matches):
+//     - the tab element itself
+//     - tab.linkedPanel (Firefox-stable string id for a tab's panel)
+//     - hostname (last-resort coarse match)
+//
+// Entries auto-expire via setTimeout so a real user-initiated re-group of
+// the same tab later isn't blocked.
+const _ejectionRegistry = new Map();
+const _identityFor = (tab) => {
+  if (!tab) return [];
+  const keys = [tab];
+  if (tab.linkedPanel) keys.push(`panel:${tab.linkedPanel}`);
+  try {
+    const url = tab.linkedBrowser?.currentURI?.spec || tab.getAttribute?.("linkedURL");
+    if (url) {
+      const u = new URL(url);
+      keys.push(`host:${u.hostname}`);
+    }
+  } catch {}
+  return keys;
+};
+export const markTabAsEjected = (tab) => {
+  const stamp = Date.now();
+  const keys = _identityFor(tab);
+  for (const k of keys) _ejectionRegistry.set(k, stamp);
+  console.log(`${LOG} markTabAsEjected: stamped ${keys.length} identity key(s) [${keys.slice(1).join(", ")}] at ${stamp}`);
+  // Auto-clean after the grace window.
+  setTimeout(() => {
+    for (const k of keys) if (_ejectionRegistry.get(k) === stamp) _ejectionRegistry.delete(k);
+  }, TAB_EJECTION_GRACE_MS + 500);
+};
+const recentlyEjectedAge = (tab) => {
+  const keys = _identityFor(tab);
+  for (const k of keys) {
+    const t = _ejectionRegistry.get(k);
+    if (t && (Date.now() - t) < TAB_EJECTION_GRACE_MS) return { age: Date.now() - t, matchedKey: typeof k === "string" ? k : "tab-element" };
+  }
+  return null;
+};
+
 // ─── Helpers (module level so they're reusable + easy to find) ───────────────
 
 // Add the tab's hostname to an existing rule, or create a new rule if the group
@@ -140,19 +186,29 @@ export const setupTabGroupedHook = () => {
       console.log(`${LOG} TabGrouped: SUPPRESSED (suppressionCount=${_suppressionCount}) for "${hostname}" → "${groupLabel}"`);
       return;
     }
+    // Identity diagnostics — print what we see so we can correlate with the
+    // marker the eject path tried to set.
+    const tabExpando = tab?._zaoEjectedAt;
+    const tabPanel = tab?.linkedPanel ?? "(no-panel)";
+    console.log(`${LOG} TabGrouped: identity check — expando=${tabExpando ?? "(none)"}, linkedPanel=${tabPanel}, hostname=${hostname}`);
+
     // Recently-ejected guard: Zen fires a stale TabGrouped to re-attach a
     // tab seconds after we ejected it (asynchronously, outside our
-    // suppression window). Skip those — that's Zen restoring state we
-    // intentionally undid, not a real user action.
-    const ejectedAt = tab?._zaoEjectedAt;
-    if (ejectedAt && (Date.now() - ejectedAt) < TAB_EJECTION_GRACE_MS) {
-      const age = Date.now() - ejectedAt;
-      console.log(`${LOG} TabGrouped: IGNORED — "${hostname}" was ejected ${age}ms ago; Zen is re-attaching it to "${groupLabel}", rule will NOT grow`);
-      // Clear the marker so a genuine user grouping later still works.
+    // suppression window). Try expando first, fall back to the central
+    // registry (which keys by linkedPanel + hostname so it survives the
+    // tab element being swapped out during Zen's re-attach).
+    if (tabExpando && (Date.now() - tabExpando) < TAB_EJECTION_GRACE_MS) {
+      const age = Date.now() - tabExpando;
+      console.log(`${LOG} TabGrouped: IGNORED via expando — "${hostname}" was ejected ${age}ms ago; rule will NOT grow`);
       delete tab._zaoEjectedAt;
       return;
     }
-    console.log(`${LOG} TabGrouped: FIRED (unsuppressed) for "${hostname}" → "${groupLabel}"`);
+    const ejected = recentlyEjectedAge(tab);
+    if (ejected) {
+      console.log(`${LOG} TabGrouped: IGNORED via registry (${ejected.matchedKey}) — "${hostname}" was ejected ${ejected.age}ms ago; rule will NOT grow`);
+      return;
+    }
+    console.log(`${LOG} TabGrouped: FIRED (unsuppressed, no ejection marker) for "${hostname}" → "${groupLabel}"`);
     try {
       // TabGrouped is dispatched on the tab-group element with the tab in
       // event.detail (see tab.js #updateOnTabGrouped in the Zen source).

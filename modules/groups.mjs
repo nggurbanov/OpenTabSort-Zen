@@ -4,7 +4,7 @@
 
 import { CONFIG, LOG, TAB_EJECTION_GRACE_MS, isZenColorName, isValidHex } from "./config.mjs";
 import { isMinimalStyle } from "./rules.mjs";
-import { setTabGroupedHookSuppressed } from "./browser-hooks.mjs";
+import { setTabGroupedHookSuppressed, markTabAsEjected } from "./browser-hooks.mjs";
 
 // Find an existing tab-group with the given label in the given workspace.
 // Tries direct attribute match first (which doesn't always work because Zen doesn't
@@ -176,10 +176,11 @@ export const moveTabsToTop = (tabs, workspaceId) => {
       } else {
         tabsContainer.insertBefore(tab, tabsContainer.firstChild);
       }
-      // Mark the tab as recently-ejected so the async TabGrouped event Zen
-      // fires shortly after (re-attaching the tab to its old group) is
-      // ignored by the auto-add hook. See browser-hooks.mjs.
+      // Mark the tab as recently-ejected via the central registry so the
+      // async TabGrouped event Zen fires shortly after (re-attaching the
+      // tab to its old group) is ignored by the auto-add hook.
       tab._zaoEjectedAt = Date.now();
+      markTabAsEjected(tab);
       moved++;
     } catch (e) {
       console.error(`${LOG} moveTabsToTop: failed:`, e);
@@ -291,6 +292,7 @@ export const dissolveStaleGroups = (workspaceId, rules) => {
           tabsContainer.insertBefore(tab, tabsContainer.firstChild);
         }
         tab._zaoEjectedAt = Date.now();
+        markTabAsEjected(tab);
         ungrouped++;
       } catch (e) {
         console.error(`${LOG} error ungrouping tab from stale group "${label}":`, e);
