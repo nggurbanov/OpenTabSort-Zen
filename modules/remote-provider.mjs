@@ -8,6 +8,7 @@ import { getProviderReadiness } from "./provider-readiness.mjs";
 import { buildProviderRequest, getProviderKind, parseProviderResponse } from "./provider-requests.mjs";
 import { readProviderSettings } from "./provider-settings.mjs";
 import { buildClassifyPrompt, buildClusterPrompt, buildUnifiedPrompt, buildFreshPrompt } from "./ollama-prompts.mjs";
+import { chunkTabsForProvider } from "./provider-batching.mjs";
 import { fetchPageSnippet } from "./tabs.mjs";
 import { showToast } from "./ui-toast.mjs";
 
@@ -27,16 +28,18 @@ export const classifyExistingGroupsRemoteBatch = async (pendingTabs, rules, sett
     return skippedMap(pendingTabs);
   }
 
-  const parsed = await providerJson(readiness.value, buildClassifyPrompt(rules, pendingTabs));
   const namesByLower = new Map(rules.map((r) => r?.name).filter(Boolean).map((name) => [name.toLowerCase(), name]));
   const out = new Map();
 
-  for (const [key, value] of Object.entries(parsed)) {
-    const idx = Number.parseInt(key, 10);
-    if (!Number.isFinite(idx) || idx < 0 || idx >= pendingTabs.length) continue;
-    const raw = String(value || "").trim();
-    const canonical = namesByLower.get(raw.toLowerCase());
-    out.set(idx, canonical || null);
+  for (const chunk of chunkTabsForProvider(pendingTabs)) {
+    const parsed = await providerJson(readiness.value, buildClassifyPrompt(rules, chunk.tabs));
+    for (const [key, value] of Object.entries(parsed)) {
+      const chunkIdx = Number.parseInt(key, 10);
+      if (!Number.isFinite(chunkIdx) || chunkIdx < 0 || chunkIdx >= chunk.tabs.length) continue;
+      const raw = String(value || "").trim();
+      const canonical = namesByLower.get(raw.toLowerCase());
+      out.set(chunk.start + chunkIdx, canonical || null);
+    }
   }
   for (let i = 0; i < pendingTabs.length; i++) if (!out.has(i)) out.set(i, null);
   return out;
@@ -63,14 +66,25 @@ export const runPass2Remote = async (unmatched, rules, settings = readProviderSe
 
     const { deduped, origToDeduped } = dedupeTabs(unmatched);
     const snippets = await fetchSnippets(deduped, "remote");
-    const parsed = await providerJson(readiness.value, buildUnifiedPrompt(rules, deduped, snippets));
     const ruleNameByLower = new Map(rules.filter((r) => r?.name).map((r) => [r.name.toLowerCase(), r.name]));
+    const parsedByDedupedIndex = new Map();
+    for (const chunk of chunkTabsForProvider(deduped)) {
+      const parsed = await providerJson(
+        readiness.value,
+        buildUnifiedPrompt(rules, chunk.tabs, snippets.slice(chunk.start, chunk.start + chunk.tabs.length)),
+      );
+      for (const [key, value] of Object.entries(parsed)) {
+        const chunkIdx = Number.parseInt(key, 10);
+        if (!Number.isFinite(chunkIdx) || chunkIdx < 0 || chunkIdx >= chunk.tabs.length) continue;
+        parsedByDedupedIndex.set(chunk.start + chunkIdx, value);
+      }
+    }
     const assignedToExisting = [];
     const newGroupsByKey = new Map();
     const skipped = [];
 
     for (let i = 0; i < unmatched.length; i++) {
-      const value = parsed[origToDeduped[i]] ?? parsed[String(origToDeduped[i])];
+      const value = parsedByDedupedIndex.get(origToDeduped[i]);
       const raw = stripMetaPrefix(value == null ? "" : String(value).trim());
       const lower = raw.toLowerCase();
       if (!raw || lower === "skipped" || lower === "none") {
@@ -107,12 +121,23 @@ export const runPass2RemoteFresh = async (allTabs, settings = readProviderSettin
 
     const { deduped, origToDeduped } = dedupeTabs(allTabs);
     const snippets = await fetchSnippets(deduped, "remote fresh");
-    const parsed = await providerJson(readiness.value, buildFreshPrompt(deduped, snippets));
+    const parsedByDedupedIndex = new Map();
+    for (const chunk of chunkTabsForProvider(deduped)) {
+      const parsed = await providerJson(
+        readiness.value,
+        buildFreshPrompt(chunk.tabs, snippets.slice(chunk.start, chunk.start + chunk.tabs.length)),
+      );
+      for (const [key, value] of Object.entries(parsed)) {
+        const chunkIdx = Number.parseInt(key, 10);
+        if (!Number.isFinite(chunkIdx) || chunkIdx < 0 || chunkIdx >= chunk.tabs.length) continue;
+        parsedByDedupedIndex.set(chunk.start + chunkIdx, value);
+      }
+    }
     const newGroupsByKey = new Map();
     const skipped = [];
 
     for (let i = 0; i < allTabs.length; i++) {
-      const value = parsed[origToDeduped[i]] ?? parsed[String(origToDeduped[i])];
+      const value = parsedByDedupedIndex.get(origToDeduped[i]);
       const raw = stripMetaPrefix(value == null ? "" : String(value).trim());
       const lower = raw.toLowerCase();
       if (!raw || lower === "skipped" || lower === "none") {
@@ -132,24 +157,32 @@ export const runPass2RemoteFresh = async (allTabs, settings = readProviderSettin
 };
 
 const clusterUnmatchedNewGroups = async (leftover, settings) => {
-  const parsed = await providerJson(settings, buildClusterPrompt(leftover));
-  const validIdx = (i) => Number.isFinite(i) && i >= 0 && i < leftover.length;
   const seen = new Set();
-  const groups = [];
+  const groupsByLower = new Map();
 
-  for (const group of Array.isArray(parsed?.groups) ? parsed.groups : []) {
-    const name = String(group?.name || "").trim();
-    if (!name) continue;
-    const tabs = [];
-    for (const idx of Array.isArray(group?.tabs) ? group.tabs.filter(validIdx) : []) {
-      if (seen.has(idx)) continue;
-      seen.add(idx);
-      tabs.push(leftover[idx]);
+  for (const chunk of chunkTabsForProvider(leftover)) {
+    const parsed = await providerJson(settings, buildClusterPrompt(chunk.tabs));
+    const validIdx = (i) => Number.isFinite(i) && i >= 0 && i < chunk.tabs.length;
+
+    for (const group of Array.isArray(parsed?.groups) ? parsed.groups : []) {
+      const name = String(group?.name || "").trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (!groupsByLower.has(key)) groupsByLower.set(key, { name, tabs: [] });
+
+      for (const chunkIdx of Array.isArray(group?.tabs) ? group.tabs.filter(validIdx) : []) {
+        const originalIdx = chunk.start + chunkIdx;
+        if (seen.has(originalIdx)) continue;
+        seen.add(originalIdx);
+        groupsByLower.get(key).tabs.push(leftover[originalIdx]);
+      }
     }
-    if (tabs.length > 0) groups.push({ name, tabs });
   }
 
-  return { groups, skipped: leftover.filter((_, idx) => !seen.has(idx)) };
+  return {
+    groups: [...groupsByLower.values()].filter((group) => group.tabs.length > 0),
+    skipped: leftover.filter((_, idx) => !seen.has(idx)),
+  };
 };
 
 const providerJson = async (settings, prompt) => {

@@ -15,7 +15,7 @@ export const LOG = "[OpenTabSort]";
 // Build tag — mirrors theme.json's `version` for shipped releases, and gets a
 // `+tag.N` suffix for in-progress iterative builds so the Browser Console
 // reveals which build is actually running (vs. a stale module cache).
-export const BUILD_VERSION = "1.1.0";
+export const BUILD_VERSION = "1.2.0";
 
 export const CONFIG = {
   // Init polling — wait for gBrowser/gZenWorkspaces/separator to appear at startup.
@@ -56,6 +56,7 @@ export const CONFIG = {
   //   "local"  — Firefox's bundled ML engine (modules/ai.mjs), existing-groups only
   //   "ollama" — local Ollama daemon (modules/ollama.mjs), existing + new groups
   AI_ENGINE_PREF: "extensions.zen-auto-organize.ai-engine",
+  AI_SORT_MODE_PREF: "extensions.zen-auto-organize.ai-sort-mode",
   AI_EXISTING_BEHAVIOR_PREF: "extensions.zen-auto-organize.ai-existing-behavior",
   AI_NEW_GROUP_BEHAVIOR_PREF: "extensions.zen-auto-organize.ai-new-group-behavior",
   AI_OLLAMA_HOST_PREF: "extensions.zen-auto-organize.ai-ollama-host",

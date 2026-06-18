@@ -13,6 +13,7 @@ const REQUIRED_SECTIONS = [
 const REQUIRED_ENGINE_VALUES = ["local", "ollama", "openai", "gemini", "custom"];
 const REQUIRED_PROPERTIES = [
   "extensions.zen-auto-organize.ai-engine",
+  "extensions.zen-auto-organize.ai-sort-mode",
   "extensions.zen-auto-organize.ai-provider-consent",
   "extensions.zen-auto-organize.ai-openai-api-key",
   "extensions.zen-auto-organize.ai-openai-model",
@@ -72,6 +73,12 @@ export const validatePreferences = (rootDir = process.cwd()) => {
 
   if (engineValues.includes("disabled")) {
     errors.push("AI engine must use compatibility value off, not disabled");
+  }
+
+  const sortMode = findEntry(preferences, "extensions.zen-auto-organize.ai-sort-mode");
+  const sortModeValues = optionValues(sortMode);
+  for (const value of ["rules-first", "hybrid", "full-ai"]) {
+    if (!sortModeValues.includes(value)) errors.push(`AI sorting mode missing option ${value}`);
   }
 
   const duplicates = [...properties].filter((property) => {

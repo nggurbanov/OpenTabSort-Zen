@@ -17,6 +17,7 @@ import { LOG } from "./config.mjs";
 import { getOllamaHost, getOllamaModel } from "./rules.mjs";
 import { fetchPageSnippet } from "./tabs.mjs";
 import { showToast } from "./ui-toast.mjs";
+import { chunkTabsForProvider } from "./provider-batching.mjs";
 import { ollamaGenerateJson } from "./ollama-transport.mjs";
 import {
   buildClassifyPrompt,
@@ -51,37 +52,39 @@ const stripMetaPrefix = (s) => s
 
 export const classifyExistingGroupsBatch = async (unmatched, rules, host, model) => {
   if (!unmatched?.length || !rules?.length) return new Map();
-  const prompt = buildClassifyPrompt(rules, unmatched);
   const groupNames = rules.map((r) => r?.name).filter(Boolean);
-
-  const r = await ollamaGenerateJson(host, model, prompt);
-  if (!r.ok) {
-    throw new Error(`Ollama classify: ${r.error}`);
-  }
-  const parsed = r.parsed;
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Ollama classify: returned non-object JSON");
-  }
-
-  console.debug(`${LOG} Ollama raw classification:`, parsed);
-
-  // Validate categories — small models occasionally hallucinate names that
-  // weren't in the list. Case-insensitive match to be forgiving of "shopping"
-  // vs "Shopping". Anything still unmatched is dropped to null.
   const nameByLower = new Map(groupNames.map((n) => [n.toLowerCase(), n]));
   const rejections = [];
   const out = new Map();
-  for (const [key, value] of Object.entries(parsed)) {
-    const idx = Number.parseInt(key, 10);
-    if (!Number.isFinite(idx) || idx < 0 || idx >= unmatched.length) continue;
-    const v = String(value || "").trim();
-    if (!v || v.toLowerCase() === "none") { out.set(idx, null); continue; }
-    const canonical = nameByLower.get(v.toLowerCase());
-    if (canonical) {
-      out.set(idx, canonical);
-    } else {
-      rejections.push(`${unmatched[idx]?.hostname || `tab${idx}`} → "${v}"`);
-      out.set(idx, null);
+
+  for (const chunk of chunkTabsForProvider(unmatched)) {
+    const r = await ollamaGenerateJson(host, model, buildClassifyPrompt(rules, chunk.tabs));
+    if (!r.ok) {
+      throw new Error(`Ollama classify: ${r.error}`);
+    }
+    const parsed = r.parsed;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Ollama classify: returned non-object JSON");
+    }
+
+    console.debug(`${LOG} Ollama raw classification:`, parsed);
+
+    // Validate categories — small models occasionally hallucinate names that
+    // weren't in the list. Case-insensitive match to be forgiving of "shopping"
+    // vs "Shopping". Anything still unmatched is dropped to null.
+    for (const [key, value] of Object.entries(parsed)) {
+      const chunkIdx = Number.parseInt(key, 10);
+      if (!Number.isFinite(chunkIdx) || chunkIdx < 0 || chunkIdx >= chunk.tabs.length) continue;
+      const originalIdx = chunk.start + chunkIdx;
+      const v = String(value || "").trim();
+      if (!v || v.toLowerCase() === "none") { out.set(originalIdx, null); continue; }
+      const canonical = nameByLower.get(v.toLowerCase());
+      if (canonical) {
+        out.set(originalIdx, canonical);
+      } else {
+        rejections.push(`${unmatched[originalIdx]?.hostname || `tab${originalIdx}`} → "${v}"`);
+        out.set(originalIdx, null);
+      }
     }
   }
   if (rejections.length > 0) {
@@ -98,30 +101,37 @@ export const classifyExistingGroupsBatch = async (unmatched, rules, host, model)
 
 const clusterUnmatchedNewGroups = async (leftover, host, model) => {
   if (!leftover?.length) return { groups: [], skipped: [] };
-  const prompt = buildClusterPrompt(leftover);
-
-  const r = await ollamaGenerateJson(host, model, prompt);
-  if (!r.ok) throw new Error(`Ollama cluster: ${r.error}`);
-
-  console.debug(`${LOG} Ollama raw clustering:`, r.parsed);
-
-  const validIdx = (i) => Number.isFinite(i) && i >= 0 && i < leftover.length;
   const seen = new Set();
-  const groups = [];
-  for (const g of Array.isArray(r.parsed?.groups) ? r.parsed.groups : []) {
-    const name = String(g?.name || "").trim();
-    if (!name) continue;
-    const indices = Array.isArray(g?.tabs) ? g.tabs.filter(validIdx) : [];
-    const tabs = [];
-    for (const i of indices) {
-      if (seen.has(i)) continue;
-      seen.add(i);
-      tabs.push(leftover[i]);
+  const groupsByLower = new Map();
+
+  for (const chunk of chunkTabsForProvider(leftover)) {
+    const prompt = buildClusterPrompt(chunk.tabs);
+    const r = await ollamaGenerateJson(host, model, prompt);
+    if (!r.ok) throw new Error(`Ollama cluster: ${r.error}`);
+
+    console.debug(`${LOG} Ollama raw clustering:`, r.parsed);
+
+    const validIdx = (i) => Number.isFinite(i) && i >= 0 && i < chunk.tabs.length;
+    for (const g of Array.isArray(r.parsed?.groups) ? r.parsed.groups : []) {
+      const name = String(g?.name || "").trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (!groupsByLower.has(key)) groupsByLower.set(key, { name, tabs: [] });
+
+      const indices = Array.isArray(g?.tabs) ? g.tabs.filter(validIdx) : [];
+      for (const chunkIdx of indices) {
+        const originalIdx = chunk.start + chunkIdx;
+        if (seen.has(originalIdx)) continue;
+        seen.add(originalIdx);
+        groupsByLower.get(key).tabs.push(leftover[originalIdx]);
+      }
     }
-    if (tabs.length > 0) groups.push({ name, tabs });
   }
-  const skipped = leftover.filter((_, i) => !seen.has(i));
-  return { groups, skipped };
+
+  return {
+    groups: [...groupsByLower.values()].filter((group) => group.tabs.length > 0),
+    skipped: leftover.filter((_, idx) => !seen.has(idx)),
+  };
 };
 
 // ─── Unified classification ──────────────────────────────────────────────────
@@ -179,15 +189,23 @@ export const unifiedClassifyOllama = async (unmatched, rules, host, model) => {
   );
   console.groupEnd();
 
-  const prompt = buildUnifiedPrompt(rules, deduped, snippets);
-  const r = await ollamaGenerateJson(host, model, prompt);
-  if (!r.ok) throw new Error(`Ollama unified: ${r.error}`);
-  const parsed = r.parsed;
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Ollama unified: returned non-object JSON");
-  }
+  const parsedByDedupedIndex = new Map();
+  for (const chunk of chunkTabsForProvider(deduped)) {
+    const prompt = buildUnifiedPrompt(rules, chunk.tabs, snippets.slice(chunk.start, chunk.start + chunk.tabs.length));
+    const r = await ollamaGenerateJson(host, model, prompt);
+    if (!r.ok) throw new Error(`Ollama unified: ${r.error}`);
+    const parsed = r.parsed;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Ollama unified: returned non-object JSON");
+    }
 
-  console.debug(`${LOG} Ollama unified classification:`, parsed);
+    console.debug(`${LOG} Ollama unified classification:`, parsed);
+    for (const [key, value] of Object.entries(parsed)) {
+      const chunkIdx = Number.parseInt(key, 10);
+      if (!Number.isFinite(chunkIdx) || chunkIdx < 0 || chunkIdx >= chunk.tabs.length) continue;
+      parsedByDedupedIndex.set(chunk.start + chunkIdx, value);
+    }
+  }
 
   // Lookup table for canonicalizing an existing rule name (case-insensitive).
   const ruleNameByLower = new Map(
@@ -200,7 +218,7 @@ export const unifiedClassifyOllama = async (unmatched, rules, host, model) => {
 
   for (let i = 0; i < unmatched.length; i++) {
     const dedupIdx = origToDeduped[i];
-    const value = parsed[dedupIdx] !== undefined ? parsed[dedupIdx] : parsed[String(dedupIdx)];
+    const value = parsedByDedupedIndex.get(dedupIdx);
     const raw = stripMetaPrefix(value == null ? "" : String(value).trim());
     const lower = raw.toLowerCase();
 
@@ -428,26 +446,34 @@ export const runPass2OllamaFresh = async (allTabs) => {
     const hit = snippets.filter((s) => s).length;
     console.log(`${LOG} Ollama fresh: fetched snippets for ${hit}/${deduped.length} tab(s) in ${Math.round(performance.now() - t0)}ms`);
 
-    const prompt = buildFreshPrompt(deduped, snippets);
-    const r = await ollamaGenerateJson(host, model, prompt);
-    if (!r.ok) {
-      console.error(`${LOG} Ollama fresh failed (${r.errorType}):`, r.error);
-      showToast(`Ollama fresh classification failed: ${r.error}`);
-      return { ...empty, skipped: allTabs, failed: r.error };
-    }
-    const parsed = r.parsed;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      console.warn(`${LOG} Ollama fresh: non-object JSON, returning all as skipped`);
-      return { ...empty, skipped: allTabs };
-    }
+    const parsedByDedupedIndex = new Map();
+    for (const chunk of chunkTabsForProvider(deduped)) {
+      const prompt = buildFreshPrompt(chunk.tabs, snippets.slice(chunk.start, chunk.start + chunk.tabs.length));
+      const r = await ollamaGenerateJson(host, model, prompt);
+      if (!r.ok) {
+        console.error(`${LOG} Ollama fresh failed (${r.errorType}):`, r.error);
+        showToast(`Ollama fresh classification failed: ${r.error}`);
+        return { ...empty, skipped: allTabs, failed: r.error };
+      }
+      const parsed = r.parsed;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        console.warn(`${LOG} Ollama fresh: non-object JSON, returning all as skipped`);
+        return { ...empty, skipped: allTabs };
+      }
 
-    console.debug(`${LOG} Ollama fresh classification:`, parsed);
+      console.debug(`${LOG} Ollama fresh classification:`, parsed);
+      for (const [key, value] of Object.entries(parsed)) {
+        const chunkIdx = Number.parseInt(key, 10);
+        if (!Number.isFinite(chunkIdx) || chunkIdx < 0 || chunkIdx >= chunk.tabs.length) continue;
+        parsedByDedupedIndex.set(chunk.start + chunkIdx, value);
+      }
+    }
 
     const newGroupsByKey = new Map();
     const skipped = [];
     for (let i = 0; i < allTabs.length; i++) {
       const dedupIdx = origToDeduped[i];
-      const value = parsed[dedupIdx] !== undefined ? parsed[dedupIdx] : parsed[String(dedupIdx)];
+      const value = parsedByDedupedIndex.get(dedupIdx);
       const raw = stripMetaPrefix(value == null ? "" : String(value).trim());
       const lower = raw.toLowerCase();
       if (!raw || lower === "skipped" || lower === "none") {

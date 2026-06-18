@@ -20,7 +20,7 @@
   "image": "https://raw.githubusercontent.com/nggurbanov/OpenTabSort-Zen/main/image.png",
   "author": "Tyrell, based on Zen Tab Wand by franklinl",
   "ai": "yes",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "preferences": "preferences.json",
   "tags": [
     "Tabs",

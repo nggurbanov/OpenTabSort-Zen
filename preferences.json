@@ -55,6 +55,17 @@
   },
   {
     "type": "dropdown",
+    "label": "Sorting mode",
+    "property": "extensions.zen-auto-organize.ai-sort-mode",
+    "defaultValue": "rules-first",
+    "options": [
+      { "label": "Rules first — Use domain rules, then AI for leftovers", "value": "rules-first" },
+      { "label": "Hybrid — Fast rules first, then AI-sort unmatched tabs every run", "value": "hybrid" },
+      { "label": "Full AI — Ignore rules and re-cluster all eligible tabs", "value": "full-ai" }
+    ]
+  },
+  {
+    "type": "dropdown",
     "label": "When AI assigns a tab to an existing group",
     "property": "extensions.zen-auto-organize.ai-existing-behavior",
     "defaultValue": "always-add",

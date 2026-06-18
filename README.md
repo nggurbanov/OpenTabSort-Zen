@@ -1,6 +1,6 @@
 # OpenTabSort Zen
 
-OpenTabSort Zen is a rule-first tab organizer for Zen Browser and Sine.
+OpenTabSort Zen is a rules-first, hybrid, or full-AI tab organizer for Zen Browser and Sine.
 It is based on [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand) and keeps the parts that made that project better than NeuroSort: a native wand button, editable domain rules, skip domains, backup and restore, tab context-menu rule growth, local AI, Ollama, Plan Mode, and persistent collapsed groups.
 
 This fork adds the pieces NeuroSort did better: explicit provider choice, privacy gates before remote AI, a validation and test harness, release metadata checks, and comparison evidence so the older NeuroSort implementation does not keep hidden advantages.
@@ -50,6 +50,7 @@ Remote provider consent is separate from provider selection. OpenTabSort should 
 - **Backup & Restore**: export/import rules and skip domains as JSON.
 - **Look & Feel**: minimal style and strict rule enforcement.
 - **AI Sorting**: local, Ollama, and remote provider controls.
+- **Sorting mode**: rules-first, hybrid, or full AI.
 - **Remote Provider Settings**: OpenAI-compatible, Gemini, and custom endpoint fields.
 
 ## Development

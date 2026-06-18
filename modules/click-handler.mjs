@@ -4,7 +4,7 @@
 
 import { CONFIG, LOG, BUILD_VERSION } from "./config.mjs";
 // (CONFIG is used inside the click pipeline for thresholds, pref names, and DOM ids.)
-import { loadRules, readSkipDomainsPref, isMinimalStyle, isStrictRulesEnforced, getAIEngine, getOllamaHost, getOllamaModel, getAINewGroupBehavior, getAIExistingBehavior } from "./rules.mjs";
+import { loadRules, readSkipDomainsPref, isMinimalStyle, isStrictRulesEnforced, getAIEngine, getAISortMode, getOllamaHost, getOllamaModel, getAINewGroupBehavior, getAIExistingBehavior } from "./rules.mjs";
 import { getEligibleTabs } from "./tabs.mjs";
 import {
   consolidateDuplicateGroups,
@@ -19,6 +19,7 @@ import { runPass2, runPass2Fresh, applyPass2 } from "./ai.mjs";
 import { checkOllamaReady, reportOllamaError, normalizeOllamaHost, runPass2Ollama, runPass2OllamaFresh, classifyExistingGroupsBatch } from "./ollama.mjs";
 import { runPass2Remote, runPass2RemoteFresh, classifyExistingGroupsRemoteBatch } from "./remote-provider.mjs";
 import { showPreviewModal } from "./preview-modal.mjs";
+import { isFullAIMode, resolveEffectiveSortingMode, resolvePass2ApplyOptions, resolveSortingPlan } from "./sorting-mode.mjs";
 
 // Module-version stamp so we can confirm the latest copy is loaded in the running window.
 // If you don't see this in the Browser Console after restart, ES module cache is stale.
@@ -89,6 +90,9 @@ export const handleOrganizeClick = async () => {
   }
 
   console.log(`${LOG} click START — v${BUILD_VERSION}`);
+  const aiEngine = getAIEngine();
+  const sortMode = resolveEffectiveSortingMode({ aiEngine, preferredMode: getAISortMode() });
+  const fullAIMode = isFullAIMode(sortMode);
 
   // 1. Merge any duplicate-name groups before lookups assume uniqueness.
   const consolidation = consolidateDuplicateGroups(workspaceId);
@@ -100,9 +104,13 @@ export const handleOrganizeClick = async () => {
   const rules = await loadRules();
 
   // 3. Dissolve groups whose names don't match any current rule.
-  const dissolution = dissolveStaleGroups(workspaceId, rules);
-  if (dissolution.dissolved > 0) {
-    console.log(`${LOG} dissolved ${dissolution.dissolved} stale group(s), ungrouped ${dissolution.ungrouped} tab(s)`);
+  if (!fullAIMode) {
+    const dissolution = dissolveStaleGroups(workspaceId, rules);
+    if (dissolution.dissolved > 0) {
+      console.log(`${LOG} dissolved ${dissolution.dissolved} stale group(s), ungrouped ${dissolution.ungrouped} tab(s)`);
+    }
+  } else {
+    console.log(`${LOG} stale-rule dissolution skipped — full-ai mode ignores rule-based grouping`);
   }
 
   // 4. Enumerate eligible tabs (post-dissolution state).
@@ -140,14 +148,13 @@ export const handleOrganizeClick = async () => {
 
   // Read AI engine + new-group behavior up-front so the Pass 1 diagnostic table
   // below can show the action that would follow given the current mode.
-  const aiEngine = getAIEngine();
   // Read the new-group behavior for any AI engine — local now also supports
   // fresh-categories / identify-only (clustering into hostname-named groups).
   // The other behaviors (auto-add / always-add / prompt) imply LLM-style
   // semantic naming and are no-ops on local; we just fall through to the
   // existing-only path in that case.
   const newGroupBehavior = aiEngine !== "off" ? getAINewGroupBehavior() : "";
-  const isFreshMode = newGroupBehavior === "fresh-categories";
+  const isFreshMode = fullAIMode || newGroupBehavior === "fresh-categories";
   const isIdentifyOnly = newGroupBehavior === "identify-only";
   // Both fresh and identify-only reclassify ALL tabs and bypass Pass 1's apply.
   // Identify-only also gates the apply step on user confirmation via modal.
@@ -197,8 +204,9 @@ export const handleOrganizeClick = async () => {
 
     // 6. Apply Pass 1 moves — UNLESS we're in a fresh-like mode, where AI
     // is about to re-tidy everything (and identify-only may even cancel).
-    if (!isFreshLike) {
-      const result = applyPass1(byGroup, workspaceId, rules);
+    const sortingPlan = resolveSortingPlan({ mode: sortMode, tabs, pass1: { byGroup, unmatched } });
+    if (sortingPlan.shouldApplyPass1) {
+      const result = applyPass1(sortingPlan.pass1ByGroup, workspaceId, rules);
       console.log(`${LOG} Applied: created ${result.createdGroups} new group(s), moved ${result.movedToNew} tab(s) into new groups, ${result.movedToExisting} tab(s) into existing groups.`);
       if (result.errors.length > 0) {
         console.warn(`${LOG} ${result.errors.length} error(s) during apply:`, result.errors);
@@ -224,17 +232,18 @@ export const handleOrganizeClick = async () => {
         }
       }
     } else {
-      console.log(`${LOG} Pass 1 apply skipped — ${newGroupBehavior} mode will ${isIdentifyOnly ? "preview" : "reclassify"} all ${tabs.length} tab(s)`);
+      console.log(`${LOG} Pass 1 apply skipped — ${sortMode} mode will ${isIdentifyOnly ? "preview" : "reclassify"} all ${tabs.length} tab(s)`);
     }
 
     // 7. Pass 2 (AI). Fresh-like modes run even when unmatched is empty — they
     // see ALL tabs and may re-cluster rule-matched ones. Other modes only fire
     // when there's something Pass 1 couldn't place.
-    const shouldRunPass2 = aiEngine !== "off" && (isFreshLike ? tabs.length > 0 : unmatched.length > 0);
+    const pass2Input = isFreshLike ? tabs : sortingPlan.tabsForAI;
+    const shouldRunPass2 = aiEngine !== "off" && pass2Input.length > 0;
     if (shouldRunPass2) {
-      const inputCount = isFreshLike ? tabs.length : unmatched.length;
-      const inputLabel = isFreshLike ? "ALL eligible tab(s)" : "unmatched tab(s)";
-      const modeSuffix = isIdentifyOnly ? " (identify-only)" : isFreshMode ? " (fresh-categories)" : "";
+      const inputCount = pass2Input.length;
+      const inputLabel = isFreshLike ? "ALL eligible tab(s)" : sortingPlan.aiInputLabel;
+      const modeSuffix = isIdentifyOnly ? " (identify-only)" : isFreshMode ? ` (${sortMode === "full-ai" ? "full-ai" : "fresh-categories"})` : "";
       console.log(`${LOG} Pass 2 — running ${aiEngine}${modeSuffix} AI over ${inputCount} ${inputLabel}...`);
       // Visual feedback on the toolbar wand while AI thinks (can be several
       // seconds, especially on cold start). Cleared in the finally below
@@ -248,14 +257,14 @@ export const handleOrganizeClick = async () => {
           const status = await checkOllamaReady(host, model);
           if (!status.reachable || !status.modelAvailable) {
             reportOllamaError(host, model, status);
-            pass2 = { assignedToExisting: [], newGroups: [], skipped: isFreshMode ? tabs : unmatched };
+            pass2 = { assignedToExisting: [], newGroups: [], skipped: isFreshMode ? tabs : pass2Input };
           } else {
             console.debug(`${LOG} Ollama ready at ${normalizeOllamaHost(host)} (model: ${model})`);
             const t0 = performance.now();
             if (isFreshLike) {
               pass2 = await runPass2OllamaFresh(tabs);
             } else {
-              pass2 = await runPass2Ollama(unmatched, rules);
+              pass2 = await runPass2Ollama(pass2Input, rules);
               // Stickiness for rule-considering modes: don't let the AI
               // pull a tab OUT of a user-organized group INTO a brand-new
               // AI-invented category. Reclassifying into an EXISTING group
@@ -286,7 +295,7 @@ export const handleOrganizeClick = async () => {
           }
         } else if (aiEngine === "openai" || aiEngine === "gemini" || aiEngine === "custom") {
           const t0 = performance.now();
-          pass2 = isFreshLike ? await runPass2RemoteFresh(tabs) : await runPass2Remote(unmatched, rules);
+          pass2 = isFreshLike ? await runPass2RemoteFresh(tabs) : await runPass2Remote(pass2Input, rules);
           console.log(`${LOG} ${aiEngine} Pass 2 took ${Math.round(performance.now() - t0)}ms`);
         } else {
           // Local engine. Two sub-paths:
@@ -301,7 +310,7 @@ export const handleOrganizeClick = async () => {
           // so a 3000-tab workspace doesn't ambush them. Cancellation just
           // produces an empty-plan pass2 result; the outer flow (color sync,
           // settle, etc.) still runs.
-          const localInput = isFreshLike ? tabs : unmatched;
+          const localInput = pass2Input;
           let cancelled = false;
           if (localInput.length > CONFIG.AI_LOCAL_CONFIRM_THRESHOLD) {
             const proceed = window.confirm(
@@ -319,7 +328,7 @@ export const handleOrganizeClick = async () => {
             if (isFreshLike) {
               pass2 = await runPass2Fresh(tabs);
             } else {
-              pass2 = await runPass2(unmatched, rules, workspaceId);
+              pass2 = await runPass2(pass2Input, rules, workspaceId);
             }
           }
         }
@@ -423,7 +432,7 @@ export const handleOrganizeClick = async () => {
           }
 
           if (planToApply) {
-            const ai = applyPass2(planToApply, workspaceId, rules);
+            const ai = applyPass2(planToApply, workspaceId, rules, resolvePass2ApplyOptions(sortMode));
             console.log(`${LOG} Pass 2 applied: ${ai.movedToExisting} tab(s) → existing groups, ${ai.newGroupsCreated} new group(s), ${ai.rulesGrown} rule(s) grown, ${ai.newRulesCreated} new rule(s)`);
             // Use the filtered plan's skipped list for the post-apply cleanup
             // (in Plan Mode, this includes tabs from un-kept groups, which

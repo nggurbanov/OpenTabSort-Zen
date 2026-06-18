@@ -57,10 +57,17 @@ const validateScripts = (rootDir, theme, errors) => {
 export const validateManifest = (rootDir = process.cwd()) => {
   const errors = [];
   const theme = readJsonObject(rootDir, "theme.json", errors);
+  const pkg = readJsonObject(rootDir, "package.json", errors);
+  const configSource = readFileSync(resolve(rootDir, "modules/config.mjs"), "utf8");
+  const buildVersion = configSource.match(/BUILD_VERSION\s*=\s*"([^"]+)"/)?.[1] || "";
 
   expectValue(errors, "id", theme.id, "opentabsort-zen");
   expectValue(errors, "name", theme.name, "OpenTabSort Zen");
-  expectValue(errors, "version", theme.version, "1.1.0");
+  if (typeof theme.version !== "string" || !theme.version.trim()) {
+    errors.push("version must be a non-empty string");
+  }
+  expectValue(errors, "package version", pkg.version, theme.version);
+  expectValue(errors, "BUILD_VERSION", buildVersion, theme.version);
   expectValue(errors, "homepage", theme.homepage, GITHUB_BASE);
   expectValue(errors, "readme", theme.readme, `${RAW_BASE}/README.md`);
   expectValue(errors, "image", theme.image, `${RAW_BASE}/image.png`);
@@ -79,5 +86,5 @@ if (isCli) {
     console.error(result.errors.join("\n"));
     process.exit(1);
   }
-  console.log("validate-manifest: PASS opentabsort-zen 1.1.0 URLs/scripts");
+  console.log("validate-manifest: PASS opentabsort-zen manifest/package/build version URLs/scripts");
 }

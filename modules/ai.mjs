@@ -811,9 +811,10 @@ const openZenEditModalForGroup = (groupEl) => {
   return false;
 };
 
-export const applyPass2 = (pass2Result, workspaceId, rules) => {
-  const existingBehavior = getAIExistingBehavior();
-  const newGroupBehavior = getAINewGroupBehavior();
+export const applyPass2 = (pass2Result, workspaceId, rules, options = {}) => {
+  const existingBehavior = options.existingBehavior || getAIExistingBehavior();
+  const newGroupBehavior = options.newGroupBehavior || getAINewGroupBehavior();
+  const persistRules = options.persistRules !== false;
 
   let movedToExisting = 0;
   let rulesGrown = 0;
@@ -892,7 +893,7 @@ export const applyPass2 = (pass2Result, workspaceId, rules) => {
   }
 
   // Persist any rule changes (rule grow + new rules).
-  if (rulesGrown > 0 || newRulesCreated > 0) writeRulesPref(rules);
+  if (persistRules && (rulesGrown > 0 || newRulesCreated > 0)) writeRulesPref(rules);
 
   return { movedToExisting, rulesGrown, newGroupsCreated, newRulesCreated };
 };

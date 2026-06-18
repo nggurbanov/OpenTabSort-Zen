@@ -211,6 +211,7 @@ const updateConditionalFields = (dialog) => {
   setHidden(findPrefRow(dialog, CONFIG.AI_OLLAMA_MODEL_PREF),       engine !== "ollama");
   setHidden(findPrefRow(dialog, CONFIG.AI_OLLAMA_WARMUP_PREF),      engine !== "ollama");
   setHidden(findPrefRow(dialog, CONFIG.AI_LOCAL_BATCH_SIZE_PREF),   !isLocalOrOllama);
+  setHidden(findPrefRow(dialog, CONFIG.AI_SORT_MODE_PREF),          engine === "off");
   setHidden(findPrefRow(dialog, CONFIG.AI_PROVIDER_CONSENT_PREF),   !isRemoteProvider);
   setHidden(findPrefRow(dialog, CONFIG.AI_OPENAI_ENDPOINT_PREF),     engine !== "openai");
   setHidden(findPrefRow(dialog, CONFIG.AI_OPENAI_API_KEY_PREF),      engine !== "openai");

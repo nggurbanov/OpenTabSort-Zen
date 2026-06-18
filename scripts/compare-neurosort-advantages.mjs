@@ -28,6 +28,8 @@ const runChecks = async (openRoot, oldRoot) => {
   const prefs = readJson(openRoot, "preferences.json");
   const readme = readText(openRoot, "README.md");
   const config = readText(openRoot, "modules/config.mjs");
+  const sortingMode = readText(openRoot, "modules/sorting-mode.mjs");
+  const providerBatching = readText(openRoot, "modules/provider-batching.mjs");
   const readiness = readText(openRoot, "modules/provider-readiness.mjs");
   const requests = readText(openRoot, "modules/provider-requests.mjs");
   const providerSettings = readText(openRoot, "modules/provider-settings.mjs");
@@ -38,7 +40,9 @@ const runChecks = async (openRoot, oldRoot) => {
   const oldReadme = readText(oldRoot, "README.md");
   const oldPreferences = readText(oldRoot, "preferences.json");
   const engineValues = preferenceOptionValues(prefs, "extensions.zen-auto-organize.ai-engine");
+  const sortModeValues = preferenceOptionValues(prefs, "extensions.zen-auto-organize.ai-sort-mode");
   const remoteNoConsentFetchCalls = await probeRemoteNoConsentFetches();
+  const buildVersion = config.match(/BUILD_VERSION\s*=\s*"([^"]+)"/)?.[1] || "";
 
   return [
     {
@@ -91,9 +95,24 @@ const runChecks = async (openRoot, oldRoot) => {
       name: "OpenTabSort metadata",
       ok: theme.id === "opentabsort-zen" &&
         theme.name === "OpenTabSort Zen" &&
-        theme.version === "1.1.0" &&
+        theme.version === pkg.version &&
+        theme.version === buildVersion &&
         theme.homepage === "https://github.com/nggurbanov/OpenTabSort-Zen" &&
         theme.readme === "https://raw.githubusercontent.com/nggurbanov/OpenTabSort-Zen/main/README.md",
+    },
+    {
+      name: "sorting mode controls",
+      ok: includesAll(sortModeValues.join(","), ["rules-first", "hybrid", "full-ai"]) &&
+        includesAll(sortingMode, ["resolveSortingPlan", "FULL_AI", "HYBRID"]) &&
+        clickHandler.includes("getAISortMode") &&
+        clickHandler.includes("resolveSortingPlan"),
+    },
+    {
+      name: "large provider batching",
+      ok: providerBatching.includes("PROVIDER_TAB_BATCH_SIZE") &&
+        remoteProvider.includes("chunkTabsForProvider") &&
+        exists(openRoot, "tests/provider-batching.test.mjs") &&
+        readText(openRoot, "tests/provider-batching.test.mjs").includes("300 ready-provider tabs"),
     },
     {
       name: "README differences",

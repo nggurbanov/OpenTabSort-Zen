@@ -3,6 +3,7 @@
 // the precedence chain (pref > file > built-in defaults).
 
 import { CONFIG, DEFAULT_RULES, LOG, ZEN_COLOR_NAMES, isValidHex } from "./config.mjs";
+import { normalizeSortingMode } from "./sorting-mode.mjs";
 
 /**
  * Read the rules pref written by the settings widget.
@@ -188,6 +189,14 @@ export const getAIEngine = () => {
     return "off";
   } catch {
     return "off";
+  }
+};
+
+export const getAISortMode = () => {
+  try {
+    return normalizeSortingMode(Services.prefs.getStringPref(CONFIG.AI_SORT_MODE_PREF, ""));
+  } catch {
+    return normalizeSortingMode("");
   }
 };
 
