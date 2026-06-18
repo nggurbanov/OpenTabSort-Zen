@@ -1,11 +1,12 @@
-# Zen Tab Wand — Documentation
+# OpenTabSort Zen — Documentation
 
-A Zen Browser Sine mod that auto-organizes tabs into groups using two passes:
+OpenTabSort Zen is a Zen Browser Sine mod that auto-organizes tabs into groups using two passes:
 
 1. **Pass 1 — Deterministic domain rules**: a hostname-to-group map (e.g. `calendar.google.com → Calendar`) defined in the settings widget, matched first-match-wins.
-2. **Pass 2 — AI fallback** (shipped): unmatched tabs are sent to one of two engines:
+2. **Pass 2 — AI fallback** (shipped): unmatched tabs are sent to the selected engine:
    - **Local** (`modules/ai.mjs`): Firefox's bundled `Mozilla/smart-tab-embedding` model. Existing-group classification only; no new-group invention.
-   - **Ollama** (`modules/ollama.mjs`): HTTP client to a local Ollama daemon at `localhost:11434`. Does both existing-group classification and AI-invented new-group clustering, with a merge pass and an optional interactive Plan Mode modal for user review.
+   - **Ollama** (`modules/ollama.mjs`): HTTP client to a local Ollama daemon at `localhost:11434`. Does both existing-group classification and AI-invented new-group clustering, with a merge pass and optional interactive Plan Mode.
+   - **Remote providers** (`modules/remote-provider.mjs`): OpenAI-compatible, Gemini, and custom endpoints. These require explicit provider config and data-sending consent before tab metadata is sent.
 
 Rules grow via three explicit paths: the settings UI rule editor, the tab right-click "Add to Rule…" submenu (browser-hooks.mjs's `setupTabContextMenu`), and AI Pass 2 when it decides to grow rules.
 
@@ -21,6 +22,7 @@ Rules grow via three explicit paths: the settings UI rule editor, the tab right-
 | `modules/*.mjs` | One module per concern. See per-file docs below. |
 | `modules/ai.mjs` | Pass 2 — local AI engine (Firefox's bundled ML, existing-group classification only). |
 | `modules/ollama.mjs` | Pass 2 — Ollama engine (full classification + clustering + merge pass + warmup). |
+| `modules/remote-provider.mjs` | Pass 2 — remote OpenAI-compatible, Gemini, and custom providers with consent gate. |
 | `modules/preview-modal.mjs` | Plan Mode interactive modal (group keep/skip, re-assign-to-planned, re-assign-to-new). |
 | `modules/ui-toast.mjs` | Shared toast/system-notification helper. |
 
@@ -47,6 +49,7 @@ See [architecture.md](architecture.md) for the full picture; the short version:
 - [module-pass1.md](module-pass1.md) — domain matcher + apply
 - [module-ai.md](module-ai.md) — Pass 2 local AI engine (embedding-only, existing groups)
 - [module-ollama.md](module-ollama.md) — Pass 2 Ollama engine (transport + prompts + orchestrators)
+- `modules/remote-provider.mjs` — Pass 2 remote provider driver
 - [module-click-handler.md](module-click-handler.md) — tidy click orchestrator
 - [module-browser-ui.md](module-browser-ui.md) — wand button, command, workspace hooks
 - [module-browser-hooks.md](module-browser-hooks.md) — tab right-click "Add to Rule" submenu + TabGroupCreate color re-apply + minimal-style observer

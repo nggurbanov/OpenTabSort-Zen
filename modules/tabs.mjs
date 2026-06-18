@@ -1,4 +1,4 @@
-// Zen Tab Wand — tab enumeration + DOM helpers.
+// OpenTabSort Zen — tab enumeration + DOM helpers.
 
 export const getTabTitle = (tab) => {
   if (!tab?.isConnected) return "";

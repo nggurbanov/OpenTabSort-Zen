@@ -1,4 +1,4 @@
-// Zen Tab Wand — Ollama prompt builders.
+// OpenTabSort Zen — Ollama prompt builders.
 //
 // Pure string-building functions for the five prompts we send to Ollama:
 //   - classifyExisting  → "fit each tab into one of the existing categories"

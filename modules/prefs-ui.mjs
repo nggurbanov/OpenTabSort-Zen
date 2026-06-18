@@ -1,4 +1,4 @@
-// Zen Tab Wand — preferences-context setup.
+// OpenTabSort Zen — preferences-context setup.
 // Watches for Sine's per-mod settings dialog and injects the rules editor widget
 // after the "Group Rules" separator. Also injects our stylesheet (Sine's chrome CSS
 // pipeline doesn't reach about:preferences scope).
@@ -14,7 +14,7 @@ import {
 } from "./widget.mjs";
 import { fetchZenColorsFromBrowser } from "./color-picker.mjs";
 
-console.log(`[ZenTabWand] prefs-ui.mjs loaded — v${BUILD_VERSION}`);
+console.log(`[OpenTabSort] prefs-ui.mjs loaded — v${BUILD_VERSION}`);
 
 let settingsObserver = null;
 
@@ -71,7 +71,11 @@ const SECTION_DESCRIPTIONS = [
   ],
   [
     "AI Sorting",
-    "Optional second pass after the rule engine. Two backends available: a small built-in model (fast but only handles obvious matches into existing groups) or a local Ollama daemon (much smarter, also forms new groups — requires Ollama running on your machine).",
+    "Optional second pass after the rule engine. Local and Ollama stay on your machine; remote providers require explicit consent before tab metadata can be sent.",
+  ],
+  [
+    "Remote Provider Settings",
+    "OpenAI-compatible, Gemini, and custom providers are optional. Leave AI engine off or use Local/Ollama for local-only sorting.",
   ],
 ];
 
@@ -167,6 +171,7 @@ const updateConditionalFields = (dialog) => {
   // normalize to "off" the same way as everywhere else in the codebase.
   const engine = getAIEngine();
   const isLocalOrOllama = engine === "local" || engine === "ollama";
+  const isRemoteProvider = engine === "openai" || engine === "gemini" || engine === "custom";
 
   const setHidden = (row, hidden) => {
     if (!row) return;
@@ -206,6 +211,16 @@ const updateConditionalFields = (dialog) => {
   setHidden(findPrefRow(dialog, CONFIG.AI_OLLAMA_MODEL_PREF),       engine !== "ollama");
   setHidden(findPrefRow(dialog, CONFIG.AI_OLLAMA_WARMUP_PREF),      engine !== "ollama");
   setHidden(findPrefRow(dialog, CONFIG.AI_LOCAL_BATCH_SIZE_PREF),   !isLocalOrOllama);
+  setHidden(findPrefRow(dialog, CONFIG.AI_PROVIDER_CONSENT_PREF),   !isRemoteProvider);
+  setHidden(findPrefRow(dialog, CONFIG.AI_OPENAI_ENDPOINT_PREF),     engine !== "openai");
+  setHidden(findPrefRow(dialog, CONFIG.AI_OPENAI_API_KEY_PREF),      engine !== "openai");
+  setHidden(findPrefRow(dialog, CONFIG.AI_OPENAI_MODEL_PREF),        engine !== "openai");
+  setHidden(findPrefRow(dialog, CONFIG.AI_GEMINI_API_KEY_PREF),      engine !== "gemini");
+  setHidden(findPrefRow(dialog, CONFIG.AI_GEMINI_MODEL_PREF),        engine !== "gemini");
+  setHidden(findPrefRow(dialog, CONFIG.AI_CUSTOM_ENDPOINT_PREF),      engine !== "custom");
+  setHidden(findPrefRow(dialog, CONFIG.AI_CUSTOM_API_KEY_PREF),       engine !== "custom");
+  setHidden(findPrefRow(dialog, CONFIG.AI_CUSTOM_MODEL_PREF),         engine !== "custom");
+  setHidden(findPrefRow(dialog, CONFIG.AI_CUSTOM_FORMAT_PREF),        engine !== "custom");
 };
 
 // First-time AI engine warning modals.
@@ -307,7 +322,7 @@ const maybeShowOllamaWarning = () => {
   const li3 = h("li");
   li3.appendChild(h("strong", { text: "Going bigger? " }));
   const link = h("a", { class: "zao-warning-link", text: "See the model guide" });
-  link.href = "https://github.com/flantig/Zen-Tab-Wand";
+  link.href = "https://github.com/nggurbanov/OpenTabSort-Zen";
   link.target = "_blank";
   link.rel = "noopener noreferrer";
   li3.appendChild(link);
@@ -346,7 +361,7 @@ const maybeShowLocalWarning = () => {
   li3.appendChild(h("strong", { text: "Want stronger results? " }));
   li3.appendChild(document.createTextNode("Try Ollama for cluster-and-name. "));
   const link = h("a", { class: "zao-warning-link", text: "See the model guide" });
-  link.href = "https://github.com/flantig/Zen-Tab-Wand";
+  link.href = "https://github.com/nggurbanov/OpenTabSort-Zen";
   link.target = "_blank";
   link.rel = "noopener noreferrer";
   li3.appendChild(link);

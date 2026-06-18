@@ -1,4 +1,4 @@
-// Zen Tab Wand — Plan Mode preview modal (Phase 4d).
+// OpenTabSort Zen — Plan Mode preview modal (Phase 4d).
 //
 // Interactive modal that lets the user review the AI's proposed groupings
 // before they're applied. Used both for explicit "Plan Mode" (identify-only)

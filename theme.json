@@ -1,8 +1,8 @@
 {
-  "id": "zen-tab-wand",
-  "name": "Zen Tab Wand",
-  "description": "One-click tab tidy. Sorts open tabs into groups using your domain rules first, then optionally an AI engine (built-in or Ollama) for everything the rules miss.",
-  "homepage": "https://github.com/flantig/Zen-Tab-Wand",
+  "id": "opentabsort-zen",
+  "name": "OpenTabSort Zen",
+  "description": "Rule-first tab sorting for Zen Browser with optional local AI and configurable provider support.",
+  "homepage": "https://github.com/nggurbanov/OpenTabSort-Zen",
   "supportsUnload": false,
   "style": {
     "chrome": "userChrome.css"
@@ -16,11 +16,11 @@
       ]
     }
   },
-  "readme": "https://raw.githubusercontent.com/flantig/Zen-Tab-Wand/main/README.md",
-  "image": "https://raw.githubusercontent.com/flantig/Zen-Tab-Wand/main/image.png",
-  "author": "franklinl",
+  "readme": "https://raw.githubusercontent.com/nggurbanov/OpenTabSort-Zen/main/README.md",
+  "image": "https://raw.githubusercontent.com/nggurbanov/OpenTabSort-Zen/main/image.png",
+  "author": "Tyrell, based on Zen Tab Wand by franklinl",
   "ai": "yes",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "preferences": "preferences.json",
   "tags": [
     "Tabs",
@@ -30,6 +30,6 @@
     "Ollama"
   ],
   "createdAt": "2026-05-15",
-  "updatedAt": "2026-06-01",
+  "updatedAt": "2026-06-18",
   "fork": ["zen"]
 }

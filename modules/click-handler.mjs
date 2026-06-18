@@ -1,4 +1,4 @@
-// Zen Tab Wand — tidy-button click orchestrator.
+// OpenTabSort Zen — tidy-button click orchestrator.
 // Sequences: wiggle → consolidate → load rules → dissolve stale → enumerate tabs
 //            → Pass 1 → apply → ungrouped-to-top → sync colors.
 
@@ -17,6 +17,7 @@ import {
 import { runPass1, applyPass1, matchesDomain } from "./pass1.mjs";
 import { runPass2, runPass2Fresh, applyPass2 } from "./ai.mjs";
 import { checkOllamaReady, reportOllamaError, normalizeOllamaHost, runPass2Ollama, runPass2OllamaFresh, classifyExistingGroupsBatch } from "./ollama.mjs";
+import { runPass2Remote, runPass2RemoteFresh, classifyExistingGroupsRemoteBatch } from "./remote-provider.mjs";
 import { showPreviewModal } from "./preview-modal.mjs";
 
 // Module-version stamp so we can confirm the latest copy is loaded in the running window.
@@ -65,6 +66,17 @@ const actionFor = (currentGroup, targetGroup) => {
   if (targetGroup === currentGroup) return "stay";
   if (currentGroup) return "move";          // tab is in a different group
   return "group";                           // tab is currently ungrouped
+};
+
+const assignmentMapToPlan = (tabs, assignmentMap) => {
+  const assignments = [];
+  const skipped = [];
+  for (let i = 0; i < tabs.length; i++) {
+    const groupName = assignmentMap.get(i);
+    if (groupName) assignments.push({ tabInfo: tabs[i], groupName });
+    else skipped.push(tabs[i]);
+  }
+  return { assignments, skipped };
 };
 
 export const handleOrganizeClick = async () => {
@@ -272,6 +284,10 @@ export const handleOrganizeClick = async () => {
             }
             console.log(`${LOG} Ollama Pass 2 took ${Math.round(performance.now() - t0)}ms`);
           }
+        } else if (aiEngine === "openai" || aiEngine === "gemini" || aiEngine === "custom") {
+          const t0 = performance.now();
+          pass2 = isFreshLike ? await runPass2RemoteFresh(tabs) : await runPass2Remote(unmatched, rules);
+          console.log(`${LOG} ${aiEngine} Pass 2 took ${Math.round(performance.now() - t0)}ms`);
         } else {
           // Local engine. Two sub-paths:
           //   - fresh-categories / identify-only: cluster ALL eligible tabs
@@ -361,7 +377,9 @@ export const handleOrganizeClick = async () => {
               onReassignToNew: async (pendingTabs) => {
                 const r = aiEngine === "local"
                   ? await runPass2Fresh(pendingTabs)
-                  : await runPass2OllamaFresh(pendingTabs);
+                  : aiEngine === "ollama"
+                    ? await runPass2OllamaFresh(pendingTabs)
+                    : await runPass2RemoteFresh(pendingTabs);
                 return { newGroups: r.newGroups, skipped: r.skipped };
               },
               // "Re-assign to planned" — constrained-vocabulary classification.
@@ -369,21 +387,18 @@ export const handleOrganizeClick = async () => {
               // fake rule whose domains are its tabs' hostnames, then runs
               // Phase-3-style classification into one of those names.
               onAssignToPlanned: async (pendingTabs, keptBuckets) => {
-                const host = getOllamaHost();
-                const model = getOllamaModel();
                 const fakeRules = keptBuckets.map((g) => ({
                   name: g.name,
                   domains: [...new Set(g.tabs.map((t) => t.hostname).filter((h) => h))],
                 }));
-                const assignmentMap = await classifyExistingGroupsBatch(pendingTabs, fakeRules, host, model);
-                const assignments = [];
-                const skipped = [];
-                for (let i = 0; i < pendingTabs.length; i++) {
-                  const groupName = assignmentMap.get(i);
-                  if (groupName) assignments.push({ tabInfo: pendingTabs[i], groupName });
-                  else skipped.push(pendingTabs[i]);
+                if (aiEngine === "local") {
+                  const local = await runPass2(pendingTabs, fakeRules, workspaceId);
+                  return { assignments: local.assignedToExisting, skipped: local.skipped };
                 }
-                return { assignments, skipped };
+                const assignmentMap = aiEngine === "ollama"
+                  ? await classifyExistingGroupsBatch(pendingTabs, fakeRules, getOllamaHost(), getOllamaModel())
+                  : await classifyExistingGroupsRemoteBatch(pendingTabs, fakeRules);
+                return assignmentMapToPlan(pendingTabs, assignmentMap);
               },
               // "Re-assign to existing" — classifies pending tabs against the
               // user's full rules table, regardless of what's currently kept
@@ -392,17 +407,14 @@ export const handleOrganizeClick = async () => {
               // callback is only provided when rules actually exist — modal
               // disables the button when undefined.
               onAssignToExisting: rules.length > 0 ? async (pendingTabs) => {
-                const host = getOllamaHost();
-                const model = getOllamaModel();
-                const assignmentMap = await classifyExistingGroupsBatch(pendingTabs, rules, host, model);
-                const assignments = [];
-                const skipped = [];
-                for (let i = 0; i < pendingTabs.length; i++) {
-                  const groupName = assignmentMap.get(i);
-                  if (groupName) assignments.push({ tabInfo: pendingTabs[i], groupName });
-                  else skipped.push(pendingTabs[i]);
+                if (aiEngine === "local") {
+                  const local = await runPass2(pendingTabs, rules, workspaceId);
+                  return { assignments: local.assignedToExisting, skipped: local.skipped };
                 }
-                return { assignments, skipped };
+                const assignmentMap = aiEngine === "ollama"
+                  ? await classifyExistingGroupsBatch(pendingTabs, rules, getOllamaHost(), getOllamaModel())
+                  : await classifyExistingGroupsRemoteBatch(pendingTabs, rules);
+                return assignmentMapToPlan(pendingTabs, assignmentMap);
               } : undefined,
             });
             if (planToApply === null) {

@@ -1,4 +1,4 @@
-// Zen Tab Wand — constants, color palette, basic helpers.
+// OpenTabSort Zen — constants, color palette, basic helpers.
 // Loaded by every other module. Holds no runtime state.
 //
 // Chrome globals this codebase relies on (provided by Firefox/Zen, NOT imported):
@@ -10,12 +10,12 @@
 //   document.createXULElement(tag) — create a XUL element (vs HTML).
 // See docs/chrome-globals.md for a longer reference.
 
-export const LOG = "[ZenTabWand]";
+export const LOG = "[OpenTabSort]";
 
 // Build tag — mirrors theme.json's `version` for shipped releases, and gets a
 // `+tag.N` suffix for in-progress iterative builds so the Browser Console
 // reveals which build is actually running (vs. a stale module cache).
-export const BUILD_VERSION = "1.0.2";
+export const BUILD_VERSION = "1.1.0";
 
 export const CONFIG = {
   // Init polling — wait for gBrowser/gZenWorkspaces/separator to appear at startup.
@@ -39,7 +39,7 @@ export const CONFIG = {
   // the Sine mod entry in mods.json.
   BUTTON_ID: "tab-wand-button",
   COMMAND_ID: "cmd_zenAutoOrganize",
-  MOD_ID: "zen-tab-wand",
+  MOD_ID: "opentabsort-zen",
 
   RULES_PREF: "extensions.zen-auto-organize.rules-json",
   SKIP_DOMAINS_PREF: "extensions.zen-auto-organize.skip-domains-json",
@@ -61,6 +61,16 @@ export const CONFIG = {
   AI_OLLAMA_HOST_PREF: "extensions.zen-auto-organize.ai-ollama-host",
   AI_OLLAMA_MODEL_PREF: "extensions.zen-auto-organize.ai-ollama-model",
   AI_OLLAMA_WARMUP_PREF: "extensions.zen-auto-organize.ai-ollama-warmup",
+  AI_PROVIDER_CONSENT_PREF: "extensions.zen-auto-organize.ai-provider-consent",
+  AI_OPENAI_ENDPOINT_PREF: "extensions.zen-auto-organize.ai-openai-endpoint",
+  AI_OPENAI_API_KEY_PREF: "extensions.zen-auto-organize.ai-openai-api-key",
+  AI_OPENAI_MODEL_PREF: "extensions.zen-auto-organize.ai-openai-model",
+  AI_GEMINI_API_KEY_PREF: "extensions.zen-auto-organize.ai-gemini-api-key",
+  AI_GEMINI_MODEL_PREF: "extensions.zen-auto-organize.ai-gemini-model",
+  AI_CUSTOM_ENDPOINT_PREF: "extensions.zen-auto-organize.ai-custom-endpoint",
+  AI_CUSTOM_API_KEY_PREF: "extensions.zen-auto-organize.ai-custom-api-key",
+  AI_CUSTOM_MODEL_PREF: "extensions.zen-auto-organize.ai-custom-model",
+  AI_CUSTOM_FORMAT_PREF: "extensions.zen-auto-organize.ai-custom-format",
   // One-shot flags: set true after the user dismisses the first-time AI
   // engine resource-warning modal. Each engine has its own acknowledgement.
   OLLAMA_ACKNOWLEDGED_PREF: "extensions.zen-auto-organize.ollama-acknowledged",
@@ -90,8 +100,8 @@ export const CONFIG = {
   AI_LOCAL_CONFIRM_THRESHOLD: 500,      // unmatched count above which a confirmation modal is shown before Pass 2
 
   // chrome:// URLs served by Sine from this mod's directory.
-  RULES_URL: "chrome://sine/content/zen-tab-wand/rules.json",
-  CSS_URL: "chrome://sine/content/zen-tab-wand/userChrome.css",
+  RULES_URL: "chrome://sine/content/opentabsort-zen/rules.json",
+  CSS_URL: "chrome://sine/content/opentabsort-zen/userChrome.css",
 
   // Color picker popover: gap (px) between the popover and its swatch anchor.
   POPOVER_GAP_PX: 8,

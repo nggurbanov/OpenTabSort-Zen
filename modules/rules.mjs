@@ -1,4 +1,4 @@
-// Zen Tab Wand — rules data layer.
+// OpenTabSort Zen — rules data layer.
 // Reads/writes the rules JSON pref, validates rules.json file contents, and exposes
 // the precedence chain (pref > file > built-in defaults).
 
@@ -178,12 +178,13 @@ export const isStrictRulesEnforced = () => {
   }
 };
 
-// Which AI engine is selected. Returns one of: "off" | "local" | "ollama".
+// Which AI engine is selected. Returns one of:
+// "off" | "local" | "ollama" | "openai" | "gemini" | "custom".
 // Any unrecognized value (Sine's "None" is the empty string) maps to "off".
 export const getAIEngine = () => {
   try {
     const engine = Services.prefs.getStringPref(CONFIG.AI_ENGINE_PREF, "");
-    if (engine === "local" || engine === "ollama") return engine;
+    if (["local", "ollama", "openai", "gemini", "custom"].includes(engine)) return engine;
     return "off";
   } catch {
     return "off";
