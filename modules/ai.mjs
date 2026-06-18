@@ -855,6 +855,17 @@ export const applyPass2 = (pass2Result, workspaceId, rules, options = {}) => {
     const color = pickAvailableColor(usedColors);
 
     try {
+      const ungroupApi = typeof gBrowser?.ungroupTab === "function" ? gBrowser.ungroupTab.bind(gBrowser) : null;
+      if (ungroupApi) {
+        for (const tab of tabs) {
+          if (tab.closest("tab-group")) {
+            try { ungroupApi(tab); } catch (e) {
+              console.warn(`${LOG} AI: ungroupTab failed before creating "${cluster.name}", continuing:`, e);
+            }
+          }
+        }
+      }
+
       const newGroup = gBrowser.addTabGroup(tabs, {
         label: cluster.name,
         // Anchor at a DOM position OUTSIDE any enclosing tab-group; otherwise
@@ -864,7 +875,10 @@ export const applyPass2 = (pass2Result, workspaceId, rules, options = {}) => {
         insertBefore: findSafeInsertAnchor(),
         color,
       });
-      if (!newGroup) continue;
+      if (!newGroup) {
+        console.warn(`${LOG} AI: addTabGroup returned no element for "${cluster.name}" (${tabs.length} tab(s))`);
+        continue;
+      }
       newGroupsCreated++;
 
       // Defensive — also set the color via our helper in case Zen's addTabGroup
