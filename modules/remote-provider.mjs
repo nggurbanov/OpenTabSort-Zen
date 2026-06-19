@@ -13,6 +13,9 @@ import { fetchPageSnippet } from "./tabs.mjs";
 import { showToast } from "./ui-toast.mjs";
 
 const GENERATE_TIMEOUT_MS = 120000;
+const PROVIDER_JSON_MAX_TOKENS = 1400;
+const PROVIDER_FRESH_JSON_MAX_TOKENS = 4096;
+const PROVIDER_FRESH_TAB_BATCH_SIZE = 35;
 
 const stripMetaPrefix = (s) => s
   .replace(/^\s*(?:new\s+)?(?:category|label|topic|bucket|group)\s*[:\-–]\s*/i, "")
@@ -122,11 +125,20 @@ export const runPass2RemoteFresh = async (allTabs, settings = readProviderSettin
     const { deduped, origToDeduped } = dedupeTabs(allTabs);
     const snippets = await fetchSnippets(deduped, "remote fresh");
     const parsedByDedupedIndex = new Map();
-    for (const chunk of chunkTabsForProvider(deduped)) {
-      const parsed = await providerJson(
-        readiness.value,
-        buildFreshPrompt(chunk.tabs, snippets.slice(chunk.start, chunk.start + chunk.tabs.length)),
-      );
+    const failures = [];
+    for (const chunk of chunkTabsForProvider(deduped, PROVIDER_FRESH_TAB_BATCH_SIZE)) {
+      let parsed;
+      try {
+        parsed = await providerJson(
+          readiness.value,
+          buildFreshPrompt(chunk.tabs, snippets.slice(chunk.start, chunk.start + chunk.tabs.length)),
+          PROVIDER_FRESH_JSON_MAX_TOKENS,
+        );
+      } catch (e) {
+        failures.push(`chunk ${chunk.start}-${chunk.start + chunk.tabs.length - 1}: ${e.message || e}`);
+        console.error(`${LOG} remote provider fresh chunk failed:`, e);
+        continue;
+      }
       for (const [key, value] of Object.entries(parsed)) {
         const chunkIdx = Number.parseInt(key, 10);
         if (!Number.isFinite(chunkIdx) || chunkIdx < 0 || chunkIdx >= chunk.tabs.length) continue;
@@ -148,7 +160,16 @@ export const runPass2RemoteFresh = async (allTabs, settings = readProviderSettin
       newGroupsByKey.get(lower).tabs.push(allTabs[i]);
     }
 
-    return { assignedToExisting: [], newGroups: [...newGroupsByKey.values()], skipped };
+    if (failures.length > 0) {
+      showToast(`Remote provider skipped ${failures.length} full-AI batch(es). Try a stronger model if some tabs did not move.`);
+    }
+
+    return {
+      assignedToExisting: [],
+      newGroups: [...newGroupsByKey.values()],
+      skipped,
+      ...(failures.length > 0 ? { failed: failures.join("; ") } : {}),
+    };
   } catch (e) {
     console.error(`${LOG} remote provider fresh classification failed:`, e);
     showToast(`Remote provider fresh classification failed: ${e.message || e}`);
@@ -185,11 +206,11 @@ const clusterUnmatchedNewGroups = async (leftover, settings) => {
   };
 };
 
-const providerJson = async (settings, prompt) => {
-  const responseText = await providerText(settings, prompt);
+const providerJson = async (settings, prompt, maxTokens = PROVIDER_JSON_MAX_TOKENS) => {
+  const responseText = await providerText(settings, prompt, maxTokens);
   let parsed;
   try {
-    parsed = JSON.parse(responseText);
+    parsed = JSON.parse(extractJsonObjectText(responseText));
   } catch {
     throw new Error(`Provider returned non-JSON content: ${String(responseText).slice(0, 120)}`);
   }
@@ -199,8 +220,15 @@ const providerJson = async (settings, prompt) => {
   return parsed;
 };
 
-const providerText = async (settings, prompt) => {
-  const request = buildProviderRequest(settings, prompt, 1400);
+const extractJsonObjectText = (text) => {
+  const raw = String(text || "").trim();
+  const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenced) return fenced[1].trim();
+  return raw;
+};
+
+const providerText = async (settings, prompt, maxTokens) => {
+  const request = buildProviderRequest(settings, prompt, maxTokens);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GENERATE_TIMEOUT_MS);
   let response;

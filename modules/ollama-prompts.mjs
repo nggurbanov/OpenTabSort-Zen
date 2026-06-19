@@ -123,9 +123,10 @@ Guidelines:
 - When multiple tabs share a [type:] or describe the same underlying activity, they belong in the same category even if their hostnames differ.
 - Pick short, broad category names (1-3 words, Title Case).
 - Aim for a small total number of categories — broad buckets beat narrow ones. Most workspaces have 3-6 categories total.
-- A category should have at least 2 tabs. Single-tab categories are usually wrong.
-- Use "skipped" for tabs that genuinely don't belong with anything.
+- Assign every normal web tab to a category. Single-tab categories are allowed when a tab has no clear sibling.
+- Use "skipped" only for tabs that are empty, internal browser pages, unreadable placeholders, or otherwise impossible to classify.
 - Do not echo a tab's title or hostname as a category name.
+- Return raw JSON only. Do not use markdown fences, prose, comments, or explanations.
 
 Output ONLY a JSON object mapping each tab number (string key) to the chosen category name or "skipped".`;
 
