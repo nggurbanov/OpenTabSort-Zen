@@ -8,12 +8,14 @@ import { getProviderReadiness } from "./provider-readiness.mjs";
 import { buildProviderRequest, getProviderKind, parseProviderResponse } from "./provider-requests.mjs";
 import { readProviderSettings } from "./provider-settings.mjs";
 import { buildClassifyPrompt, buildClusterPrompt, buildUnifiedPrompt, buildFreshPrompt } from "./ollama-prompts.mjs";
-import { chunkTabsForProvider } from "./provider-batching.mjs";
+import { consolidateNewGroups } from "./new-group-consolidation.mjs";
+import { chunkTabsForProvider, PROVIDER_TAB_BATCH_SIZE } from "./provider-batching.mjs";
+import { collectProviderTabMap } from "./remote-assignment-retry.mjs";
 import { fetchPageSnippet } from "./tabs.mjs";
 import { showToast } from "./ui-toast.mjs";
 
 const GENERATE_TIMEOUT_MS = 120000;
-const PROVIDER_JSON_MAX_TOKENS = 1400;
+const PROVIDER_JSON_MAX_TOKENS = 4096;
 const PROVIDER_FRESH_JSON_MAX_TOKENS = 4096;
 const PROVIDER_FRESH_TAB_BATCH_SIZE = 35;
 
@@ -70,18 +72,14 @@ export const runPass2Remote = async (unmatched, rules, settings = readProviderSe
     const { deduped, origToDeduped } = dedupeTabs(unmatched);
     const snippets = await fetchSnippets(deduped, "remote");
     const ruleNameByLower = new Map(rules.filter((r) => r?.name).map((r) => [r.name.toLowerCase(), r.name]));
-    const parsedByDedupedIndex = new Map();
-    for (const chunk of chunkTabsForProvider(deduped)) {
-      const parsed = await providerJson(
-        readiness.value,
-        buildUnifiedPrompt(rules, chunk.tabs, snippets.slice(chunk.start, chunk.start + chunk.tabs.length)),
-      );
-      for (const [key, value] of Object.entries(parsed)) {
-        const chunkIdx = Number.parseInt(key, 10);
-        if (!Number.isFinite(chunkIdx) || chunkIdx < 0 || chunkIdx >= chunk.tabs.length) continue;
-        parsedByDedupedIndex.set(chunk.start + chunkIdx, value);
-      }
-    }
+    const { parsedByIndex: parsedByDedupedIndex, failures } = await collectProviderTabMap({
+      tabs: deduped,
+      snippets,
+      initialBatchSize: PROVIDER_TAB_BATCH_SIZE,
+      label: "remote provider",
+      buildPrompt: (tabs, chunkSnippets) => buildUnifiedPrompt(rules, tabs, chunkSnippets),
+      fetchJson: (prompt) => providerJson(readiness.value, prompt, PROVIDER_JSON_MAX_TOKENS),
+    });
     const assignedToExisting = [];
     const newGroupsByKey = new Map();
     const skipped = [];
@@ -103,7 +101,12 @@ export const runPass2Remote = async (unmatched, rules, settings = readProviderSe
       newGroupsByKey.get(lower).tabs.push(unmatched[i]);
     }
 
-    return { assignedToExisting, newGroups: [...newGroupsByKey.values()], skipped };
+    const newGroups = await consolidateNewGroups([...newGroupsByKey.values()], (prompt) =>
+      providerJson(readiness.value, prompt), "Remote provider");
+    if (failures.length > 0) {
+      showToast(`Remote provider retried incomplete batches; ${skipped.length} tab(s) still did not move.`);
+    }
+    return { assignedToExisting, newGroups, skipped };
   } catch (e) {
     console.error(`${LOG} remote provider classification failed:`, e);
     showToast(`Remote provider classification failed: ${e.message || e}`);
@@ -124,27 +127,14 @@ export const runPass2RemoteFresh = async (allTabs, settings = readProviderSettin
 
     const { deduped, origToDeduped } = dedupeTabs(allTabs);
     const snippets = await fetchSnippets(deduped, "remote fresh");
-    const parsedByDedupedIndex = new Map();
-    const failures = [];
-    for (const chunk of chunkTabsForProvider(deduped, PROVIDER_FRESH_TAB_BATCH_SIZE)) {
-      let parsed;
-      try {
-        parsed = await providerJson(
-          readiness.value,
-          buildFreshPrompt(chunk.tabs, snippets.slice(chunk.start, chunk.start + chunk.tabs.length)),
-          PROVIDER_FRESH_JSON_MAX_TOKENS,
-        );
-      } catch (e) {
-        failures.push(`chunk ${chunk.start}-${chunk.start + chunk.tabs.length - 1}: ${e.message || e}`);
-        console.error(`${LOG} remote provider fresh chunk failed:`, e);
-        continue;
-      }
-      for (const [key, value] of Object.entries(parsed)) {
-        const chunkIdx = Number.parseInt(key, 10);
-        if (!Number.isFinite(chunkIdx) || chunkIdx < 0 || chunkIdx >= chunk.tabs.length) continue;
-        parsedByDedupedIndex.set(chunk.start + chunkIdx, value);
-      }
-    }
+    const { parsedByIndex: parsedByDedupedIndex, failures } = await collectProviderTabMap({
+      tabs: deduped,
+      snippets,
+      initialBatchSize: PROVIDER_FRESH_TAB_BATCH_SIZE,
+      label: "remote provider fresh",
+      buildPrompt: (tabs, chunkSnippets) => buildFreshPrompt(tabs, chunkSnippets),
+      fetchJson: (prompt) => providerJson(readiness.value, prompt, PROVIDER_FRESH_JSON_MAX_TOKENS),
+    });
     const newGroupsByKey = new Map();
     const skipped = [];
 
@@ -164,9 +154,12 @@ export const runPass2RemoteFresh = async (allTabs, settings = readProviderSettin
       showToast(`Remote provider skipped ${failures.length} full-AI batch(es). Try a stronger model if some tabs did not move.`);
     }
 
+    const newGroups = await consolidateNewGroups([...newGroupsByKey.values()], (prompt) =>
+      providerJson(readiness.value, prompt, PROVIDER_FRESH_JSON_MAX_TOKENS), "Remote provider");
+
     return {
       assignedToExisting: [],
-      newGroups: [...newGroupsByKey.values()],
+      newGroups,
       skipped,
       ...(failures.length > 0 ? { failed: failures.join("; ") } : {}),
     };

@@ -121,8 +121,11 @@ test("Given full AI remote sorting over many tabs When provider is called Then f
   globalThis.fetch = async (url, init) => {
     const prompt = JSON.parse(init.body).messages[0].content;
     const tabLines = [...prompt.matchAll(/^(\d+)\. ([^\n]+?) — "([^"]*)"/gm)];
-    calls.push(tabLines.length);
-    const assignments = Object.fromEntries(tabLines.map((match) => [match[1], "Batch"]));
+    const isMergePrompt = prompt.includes("Categories to review");
+    calls.push(isMergePrompt ? "merge" : tabLines.length);
+    const assignments = isMergePrompt
+      ? { "Batch A": "Batch", "Batch B": "Batch", "Batch C": "Batch" }
+      : Object.fromEntries(tabLines.map((match) => [match[1], `Batch ${calls.length === 1 ? "A" : calls.length === 2 ? "B" : "C"}`]));
     return new Response(JSON.stringify({
       choices: [{ message: { content: JSON.stringify(assignments) } }],
     }), { status: 200, headers: { "content-type": "application/json" } });
@@ -142,7 +145,7 @@ test("Given full AI remote sorting over many tabs When provider is called Then f
       model: "gpt-tabs",
     });
 
-    assert.deepEqual(calls, [35, 35, 10]);
+    assert.deepEqual(calls, [35, 35, 10, "merge"]);
     assert.equal(plan.newGroups.length, 1);
     assert.equal(plan.newGroups[0].tabs.length, 80);
     assert.deepEqual(plan.skipped, []);

@@ -92,7 +92,11 @@ For each tab, pick a single label that is one of:
 Guidance:
 - Use an existing label only when the tab is the SAME KIND of thing as that label's example domains — same service, same provider, or a near-equivalent substitute. The example domains define what the label means. Do NOT use an existing label as a generic catch-all because its name sounds related. If no existing label closely fits, create a new label or "skipped".
 - Several tabs about the same topic should share the SAME label. For example, three different gaming sites (news, marketplace, ranking) all belong under ONE shared label.
-- Aim for at most 1-2 new labels per batch. Broad buckets beat narrow ones.
+- Aim for 4-10 stable intent buckets across a normal workspace. For this batch, add at most 1-2 new labels when possible. Broad but coherent buckets beat narrow one-tab labels.
+- Keep adjacent intent families separate unless the tabs clearly share the same exact task: Docs (files, documents, writing) vs Research (articles, papers, reference reading) vs Work (trackers, admin, ops, business tools).
+- Keep Shopping (products, carts, stores) separate from Finance (banking, payments, taxes, invoices) and Planning (calendar, maps, bookings, trips, events).
+- Keep Communication (email, chat, messages, meetings) separate from Media (video, music, podcasts, streaming). Watching or listening is not the same as messaging.
+- Keep Internal/Tools (browser settings, extensions, dashboards, dev/admin utilities) separate from user-facing content.
 - A new label that covers only one tab is unusual — only pick one if that tab is clearly its own distinct topic with no siblings here.
 - Do not echo the tab's title or hostname as the label.
 - Do not include any of these words in the label: "new", "category", "label", "topic", "skipped".
@@ -103,7 +107,7 @@ ${renderCategoryList(rules)}
 Tabs:
 ${renderTabList(unmatched, snippets)}
 
-Output ONLY a JSON object mapping tab number (string key) to the chosen label.`;
+Output raw JSON only: a JSON object mapping EVERY tab number shown above (string key) to exactly one chosen label. Do not omit any tab.`;
 
 // ─── Fresh (Phase 4c: Arc-Tidy — ignore existing, re-cluster all) ────────────
 
@@ -122,13 +126,17 @@ Guidelines:
 - Use the signals above to infer what the user is DOING with each tab, not just what website they're on. Prefer category names that reflect that intent — "Reading", "Watching", "Research", "Shopping", "Work tools" — over narrow topic labels like "BBC", "Vimeo Videos".
 - When multiple tabs share a [type:] or describe the same underlying activity, they belong in the same category even if their hostnames differ.
 - Pick short, broad category names (1-3 words, Title Case).
-- Aim for a small total number of categories — broad buckets beat narrow ones. Most workspaces have 3-6 categories total.
+- Aim for 4-10 stable intent buckets across a normal workspace. Broad but coherent buckets beat narrow one-tab categories.
+- Keep adjacent intent families separate unless the tabs clearly share the same exact task: Docs (files, documents, writing) vs Research (articles, papers, reference reading) vs Work (trackers, admin, ops, business tools).
+- Keep Shopping (products, carts, stores) separate from Finance (banking, payments, taxes, invoices) and Planning (calendar, maps, bookings, trips, events).
+- Keep Communication (email, chat, messages, meetings) separate from Media (video, music, podcasts, streaming). Watching or listening is not the same as messaging.
+- Keep Internal/Tools (browser settings, extensions, dashboards, dev/admin utilities) separate from user-facing content.
 - Assign every normal web tab to a category. Single-tab categories are allowed when a tab has no clear sibling.
 - Use "skipped" only for tabs that are empty, internal browser pages, unreadable placeholders, or otherwise impossible to classify.
 - Do not echo a tab's title or hostname as a category name.
 - Return raw JSON only. Do not use markdown fences, prose, comments, or explanations.
 
-Output ONLY a JSON object mapping each tab number (string key) to the chosen category name or "skipped".`;
+Output ONLY a JSON object mapping EVERY tab number shown above (string key) to the chosen category name or "skipped". Do not omit any tab.`;
 
 // ─── Merge (Phase 4b polish: consolidate over-specialized categories) ────────
 //
@@ -153,7 +161,12 @@ ${categoryLines}
 Rules:
 - Tabs from the SAME provider belong together. For example, multiple google.com subdomains (calendar/drive/meet/docs/gmail/...) should all map to ONE category like "Google" or "Google Services". Same for any shared provider.
 - Categories sharing a BROAD topic should map to the same target. Gaming-news, indie-games, streaming-services — all map to "Gaming". Multiple shopping-flavors — all map to "Shopping".
-- Aim for 3-5 distinct target categories total. Fewer broader buckets > more narrow ones.
+- Merge label variants that describe the same intent: Work / Work Management / Project Management; Planning / Planning & Tasks / Planning & Scheduling; Tools / Developer Tools / Admin & Tools / Admin & Settings.
+- Aim for 4-10 stable intent buckets across a normal workspace. Broad but coherent buckets beat narrow one-tab categories.
+- Keep adjacent intent families separate unless the tabs clearly share the same exact task: Docs (files, documents, writing) vs Research (articles, papers, reference reading) vs Work (trackers, admin, ops, business tools).
+- Keep Shopping (products, carts, stores) separate from Finance (banking, payments, taxes, invoices) and Planning (calendar, maps, bookings, trips, events).
+- Keep Communication (email, chat, messages, meetings) separate from Media (video, music, podcasts, streaming). Watching or listening is not the same as messaging.
+- Keep Internal/Tools (browser settings, extensions, dashboards, dev/admin utilities) separate from user-facing content.
 - A category that's genuinely standalone can map to itself.
 
 Output ONLY a JSON object mapping each original category name (left side) to its target category name (right side). Use the EXACT original names from the list above as keys.

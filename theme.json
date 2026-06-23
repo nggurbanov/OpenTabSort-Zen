@@ -20,7 +20,7 @@
   "image": "https://raw.githubusercontent.com/nggurbanov/OpenTabSort-Zen/main/image.png",
   "author": "Tyrell, based on Zen Tab Wand by franklinl",
   "ai": "yes",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "preferences": "preferences.json",
   "tags": [
     "Tabs",
@@ -30,6 +30,6 @@
     "Ollama"
   ],
   "createdAt": "2026-05-15",
-  "updatedAt": "2026-06-18",
+  "updatedAt": "2026-06-23",
   "fork": ["zen"]
 }

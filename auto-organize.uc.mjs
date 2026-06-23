@@ -4,8 +4,8 @@
 // to wire the right submodules in each context.
 
 import { CONFIG, LOG, BUILD_VERSION } from "./modules/config.mjs";
-import { domCache } from "./modules/tabs.mjs";
-import { readRulesPref, getAIEngine, getOllamaHost, getOllamaModel, isOllamaWarmupEnabled } from "./modules/rules.mjs";
+import { domCache, getEligibleTabs } from "./modules/tabs.mjs";
+import { readRulesPref, getAIEngine, getAISortMode, getOllamaHost, getOllamaModel, isOllamaWarmupEnabled } from "./modules/rules.mjs";
 import { syncAllGroupColors } from "./modules/groups.mjs";
 import { warmupOllama } from "./modules/ollama.mjs";
 import {
@@ -13,6 +13,7 @@ import {
   setupWorkspaceHooks,
   addButtonToAllSeparators,
 } from "./modules/browser-ui.mjs";
+import { handleOrganizeClick } from "./modules/click-handler.mjs";
 import {
   setupTabContextMenu,
   teardownTabContextMenu,
@@ -50,6 +51,28 @@ const tryInitializeBrowser = () => {
       setupTabGroupCreateHook();
       setupCollapsedStatePersistence();
       setupMinimalStylePrefObserver();
+      window.OpenTabSortZen = Object.freeze({
+        buildVersion: BUILD_VERSION,
+        handleOrganizeClick: async () => {
+          window.OpenTabSortZenLastRun = {
+            startedAt: Date.now(),
+            finished: false,
+            before: {
+              eligibleTabs: getEligibleTabs().tabs.length,
+              aiEngine: getAIEngine(),
+              aiSortMode: getAISortMode(),
+            },
+          };
+          try {
+            await handleOrganizeClick();
+            window.OpenTabSortZenLastRun.finished = true;
+          } catch (e) {
+            window.OpenTabSortZenLastRun.error = e?.stack || e?.message || String(e);
+            throw e;
+          }
+          return window.OpenTabSortZenLastRun;
+        },
+      });
 
       // Apply colors to groups that were restored before our hook installed
       // (the TabGroupCreate event already fired by the time the listener registered).

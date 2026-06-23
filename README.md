@@ -67,6 +67,22 @@ Run the full gate:
 npm run check
 ```
 
+Run the isolated Zen Browser E2E gate:
+
+```sh
+npm run e2e:zen -- --tabs 300
+```
+
+The E2E runner creates a disposable Zen profile, copies the installed Sine engine from an existing Zen profile, installs the local checkout into that lab profile, and drives the real Sine-loaded organize handler through Marionette. It does not operate on your main Zen profile. Pass `--sine-profile <path>` if auto-detection cannot find a profile with Sine installed.
+
+By default the runner uses a deterministic local fake OpenAI-compatible provider. To test a real OpenRouter-compatible provider and write a redacted semantic quality report:
+
+```sh
+OPENROUTER_API_KEY=... npm run e2e:zen -- --provider real --scenario full-ai --tabs 120 --quality-artifact .omo/ulw-loop/evidence/real-full-ai-quality.json
+```
+
+In real-provider mode, Zen still talks only to a local forwarding proxy with a dummy key. The proxy reads `OPENROUTER_API_KEY`, defaults to `https://openrouter.ai/api/v1` and `google/gemini-3.5-flash`, and records only redacted call metadata plus label-agnostic grouping quality metrics.
+
 Useful focused checks:
 
 ```sh
