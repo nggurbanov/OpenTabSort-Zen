@@ -200,8 +200,8 @@ const clusterUnmatchedNewGroups = async (leftover, settings) => {
   return { groups: [...groupsByLower.values()], skipped, unresolved: missing.map((index) => leftover[index]), failed: failures.join("; ") };
 };
 
-const providerJson = async (settings, prompt, maxTokens = PROVIDER_JSON_MAX_TOKENS) => {
-  const responseText = await providerText(settings, prompt, maxTokens);
+export const providerJson = async (settings, prompt, maxTokens = PROVIDER_JSON_MAX_TOKENS, signal) => {
+  const responseText = await providerText(settings, prompt, maxTokens, signal);
   let parsed;
   try {
     parsed = JSON.parse(extractJsonObjectText(responseText));
@@ -221,9 +221,12 @@ const extractJsonObjectText = (text) => {
   return raw;
 };
 
-const providerText = async (settings, prompt, maxTokens) => {
+const providerText = async (settings, prompt, maxTokens, signal) => {
   const request = buildProviderRequest(settings, prompt, maxTokens);
   const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) controller.abort();
   const timer = setTimeout(() => controller.abort(), GENERATE_TIMEOUT_MS);
   try {
     const response = await fetch(request.url, { ...request.init, signal: controller.signal });
@@ -241,12 +244,14 @@ const providerText = async (settings, prompt, maxTokens) => {
     if (typeof text !== "string" || !text.trim()) throw new Error("Provider response did not contain text");
     return text.trim();
   } catch (error) {
+    if (signal?.aborted) throw new DOMException("Sorting stopped", "AbortError");
     if (error.status || /^Provider response/.test(error.message)) throw error;
     const safe = new Error(error.name === "AbortError" ? `Provider timeout after ${GENERATE_TIMEOUT_MS}ms` : "Provider network request failed");
     safe.retryable = false;
     throw safe;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
   }
 };
 

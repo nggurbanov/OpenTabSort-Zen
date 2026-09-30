@@ -14,6 +14,7 @@ import { resolveEffectiveSortingMode, isFullAIMode, resolvePass2ApplyOptions } f
 import { showPreviewModal } from "./preview-modal.mjs";
 import { showToast } from "./ui-toast.mjs";
 import { captureTabSnapshot, isTabSnapshotCurrent, validateAIPlan, reserveNewGroupNames } from "./sort-plan.mjs";
+import { runJevSort, invalidateJevUndo } from "./jev-sort.mjs";
 
 console.log(`${LOG} click-handler.mjs loaded — v${BUILD_VERSION}`);
 let organizing = false;
@@ -59,6 +60,12 @@ export const handleOrganizeClick = async () => {
     const excluded = allTabs.filter((tab) => skipPatterns.some((pattern) => matchesDomain(tab.hostname, pattern)));
     const excludedRefs = new Set(excluded.map((tab) => tab._tab));
     const tabs = allTabs.filter((tab) => !excludedRefs.has(tab._tab));
+    if (engine === "jev") {
+      if (!tabs.length) return;
+      tidyButton?.classList.add("zao-thinking");
+      await runJevSort({ tabs, workspaceId, snapshot });
+      return;
+    }
     const pass1 = runPass1(tabs, rules);
     const newBehavior = engine === "off" ? "" : getAINewGroupBehavior();
     const freshLike = fullAI || ["fresh-categories", "identify-only"].includes(newBehavior);
@@ -134,6 +141,7 @@ export const handleOrganizeClick = async () => {
     }
     validateAIPlan(plan, tabs);
     if (plan.failed && !plan.assignedToExisting.length && !plan.newGroups.length) return;
+    invalidateJevUndo();
     consolidateDuplicateGroups(workspaceId);
     if (excluded.length) moveTabsToTop(excluded.map((tab) => tab._tab), workspaceId);
     if (!freshLike) applyPass1(pass1.byGroup, workspaceId, rules);

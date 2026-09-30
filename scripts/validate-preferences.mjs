@@ -10,7 +10,7 @@ const REQUIRED_SECTIONS = [
   "AI Sorting",
 ];
 
-const REQUIRED_ENGINE_VALUES = ["local", "ollama", "openai", "gemini", "custom"];
+const REQUIRED_ENGINE_VALUES = ["local", "ollama", "openai", "gemini", "custom", "jev"];
 const REQUIRED_PROPERTIES = [
   "extensions.zen-auto-organize.ai-engine",
   "extensions.zen-auto-organize.ai-sort-mode",
@@ -23,6 +23,12 @@ const REQUIRED_PROPERTIES = [
   "extensions.zen-auto-organize.ai-custom-model",
   "extensions.zen-auto-organize.ai-custom-endpoint",
   "extensions.zen-auto-organize.ai-custom-format",
+  "extensions.zen-auto-organize.ai-jev-api-key",
+  "extensions.zen-auto-organize.ai-jev-model",
+  "extensions.zen-auto-organize.ai-jev-category-source",
+  "extensions.zen-auto-organize.ai-jev-category-provider",
+  "extensions.zen-auto-organize.ai-jev-preview",
+  "extensions.zen-auto-organize.ai-jev-confidence",
 ];
 
 const readPreferences = (rootDir, errors) => {

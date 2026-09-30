@@ -11,6 +11,7 @@ A one-click tab tidier for [Zen Browser](https://zen-browser.app), installed via
 - [Quick start](#quick-start)
 - [Growing rules from the tab right-click](#growing-rules-from-the-tab-right-click)
 - [AI engines](#ai-engines)
+- [Quick sorting with Jev](#quick-sorting-with-jev)
 - [Setting up Ollama](#setting-up-ollama)
 - [Choosing an AI model](#choosing-an-ai-model)
 - [AI modes](#modes-when-ai-creates-a-new-group)
@@ -29,7 +30,7 @@ Two passes:
 
 AI stays off unless you enable it. Choose Firefox Local AI, [Ollama](https://ollama.com), OpenAI-compatible, Gemini, or a custom endpoint. Remote providers require explicit consent before any tab context is fetched or sent.
 
-**Version 1.3.0** incorporates upstream changes through September 20, 2026, while retaining the fork’s remote providers, bounded batches, and Full AI mode. Based on the MIT-licensed [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand). See [CHANGELOG.md](CHANGELOG.md) for the actual changes.
+**Version 1.4.0** adds live Jev sorting with optional LLM category suggestions. It incorporates upstream changes through September 20, 2026, while retaining the fork’s remote providers, bounded batches, and Full AI mode. Based on the MIT-licensed [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand). See [CHANGELOG.md](CHANGELOG.md) for the actual changes.
 
 ### A practical workflow
 
@@ -74,11 +75,34 @@ The tab doesn't move — only the rule grows. Click the wand afterwards to actua
 | **OpenAI-compatible** | Remote or self-hosted chat completions. | Set endpoint, model, API key, and consent. |
 | **Gemini** | Google AI Studio generateContent. | Set model, API key, and consent. |
 | **Custom** | OpenAI or Ollama-compatible service, including local servers without keys. | Set endpoint, model, format, optional key, and consent. |
+| **Jev** | Classifies tabs into described categories in small parallel batches and organizes them live. An optional LLM suggests the categories first. | TypeSafe API key and consent; configure a suggestion provider or define categories yourself. |
 | **Ollama** | A local Ollama daemon. Assigns tabs into existing groups and invents new ones, with a merge pass and an optional interactive **Preview Only** mode where you review the plan before applying. | Install [Ollama](https://ollama.com), then `ollama pull qwen2.5:1.5b` (or a bigger model if you have the VRAM). |
 
 The first time you pick **Local** or **Ollama** in settings, a one-shot warning modal explains the resource cost (CPU/RAM for Local, VRAM for Ollama) and asks you to acknowledge before the engine is allowed to run.
 
-AI engines fetch a small page-context snippet (`og:type`, `og:site_name`, first `<h1>`, `<meta name="description">`) for each unmatched tab to classify on more than just the URL.
+Other AI engines fetch a small page-context snippet (`og:type`, `og:site_name`, first `<h1>`, `<meta name="description">`) for each unmatched tab to classify on more than just the URL. Jev uses compact tab metadata directly, without fetching pages.
+
+## Quick sorting with Jev
+
+Choose **Jev** in AI Sorting, enter your [TypeSafe API key](https://console.typesafe.ai/settings/keys), and enable data-sending consent. Under **Jev Quick Sort**, choose a category suggestion provider (OpenAI-compatible, Gemini, Custom, or Ollama) and fill in that provider's existing settings. Alternatively, define your categories yourself without configuring an LLM.
+
+Click the wand. On first use, the LLM looks at the eligible tab list and proposes up to 10 categories with short names, scope descriptions, and examples. Jev then chooses a category for each tab, answering up to 30 tab questions in parallel per request. Batches shrink when needed to fit the request budget. Each completed batch applies immediately, with live progress and a brief highlight. Reduced-motion preferences disable highlights; the selected tab is processed last and is never highlighted or replaced by another selected tab.
+
+**Automatic sorting is the default.** **Preview categories before sorting** is off. Enable it to rename, merge, remove, or adjust categories before classification. Cancelling the preview leaves categories and tabs unchanged and makes no Jev classification calls; the LLM suggestion call, if needed, has already happened.
+
+| Category source | Behavior |
+|---|---|
+| **Reuse my categories** (default) | Suggests categories when this workspace has none, then reuses them on later sorts. |
+| **Suggest from my tabs** | Refreshes the taxonomy from the current tab list on every sort. |
+| **Define my own** | Uses only the named categories and descriptions saved in settings. |
+
+Category meanings are saved separately for each workspace. Edit them in the Jev settings section; save an empty list to trigger suggestions on the next Reuse run. The suggestion pass normally covers hundreds of compact tabs in one request. Oversized lists are summarized in bounded chunks and their category proposals merged, so every eligible tab participates.
+
+Jev regroups all eligible tabs, including already grouped tabs, by category meaning. It does not apply or grow domain/title rules. Pinned, essential, glance, placeholder, other-workspace, and Skip Domain tabs are excluded. Unknown, low-confidence, and invalid/missing answers keep their current membership. The confidence floor defaults to 0.5 and can be adjusted from 0 to 1.
+
+**Stop** cancels the active request and keeps completed moves. **Undo sort** restores the previous group membership, tab order, group appearance, and collapsed state during the current session. Undo refuses to overwrite a layout edited afterwards. Workspace, tab, rule, or provider-setting changes during sorting stop further batches. Provider failures keep completed batches and leave remaining tabs untouched.
+
+Jev and the category provider receive bounded titles, hostname/path context, and current group labels. URL credentials, query strings, and fragments are omitted, and Jev never fetches page snippets. TypeSafe receives your chosen category descriptions and examples as well. Keys remain in local preferences and are excluded from backups and diagnostics. The currently documented API is [`POST /v1/systemone`](https://docs.typesafe.ai/api); this integration defaults to `jev-latest`.
 
 For Ollama, the default model is `qwen2.5:1.5b` (~1 GB, runs on most GPUs). If you have 8+ GB VRAM, `qwen2.5:7b` is noticeably more accurate — change the model name in settings.
 
@@ -143,9 +167,9 @@ The mod ships with two engines and lets you pick any model your Ollama install c
 
 ## Modes when AI creates a new group
 
-Available for every AI engine. **Rules + AI** matches rules first and sends leftovers to AI; the legacy `hybrid` preference has the same behavior. **Full AI** analyzes all eligible tabs and never saves rules, regardless of the persistence settings below.
+Available for the Local, Ollama, and chat-provider engines. Jev has its own category controls described above. **Rules + AI** matches rules first and sends leftovers to AI; the legacy `hybrid` preference has the same behavior. **Full AI** analyzes all eligible tabs and never saves rules, regardless of the persistence settings below.
 
-Plans are computed before any tab moves. Cancel leaves tab groups and rules unchanged. If you switch workspaces, edit rules, navigate, open/close tabs, or regroup while AI is running, the outdated plan is discarded. Tabs with failed or skipped classifications keep their original membership. Existing manual groups are preserved when AI creates new groups in Rules + AI mode.
+For those engines, plans are computed before any tab moves. Cancel leaves tab groups and rules unchanged. If you switch workspaces, edit rules, navigate, open/close tabs, or regroup while AI is running, the outdated plan is discarded. Tabs with failed or skipped classifications keep their original membership. Existing manual groups are preserved when AI creates new groups in Rules + AI mode. Jev applies completed batches live and supports Stop/Undo instead.
 
 | Mode | What happens |
 |---|---|

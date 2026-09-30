@@ -14,6 +14,7 @@ import {
   teardownSkipPrefObserver,
 } from "./widget.mjs";
 import { fetchZenColorsFromBrowser } from "./color-picker.mjs";
+import { buildSavedCategoryEditor } from "./jev-ui.mjs";
 
 console.log(`[OpenTabSort] prefs-ui.mjs loaded — v${BUILD_VERSION}`);
 
@@ -72,7 +73,7 @@ const SECTION_DESCRIPTIONS = [
   ],
   [
     "AI Sorting",
-    "Optional second pass after the rule engine. Two backends available: a small built-in model (fast but only handles obvious matches into existing groups) or a local Ollama daemon (much smarter, also forms new groups — requires Ollama running on your machine).",
+    "Choose a local or remote AI engine. Jev organizes tabs live using saved category meanings, with an optional LLM pass to suggest new categories.",
   ],
 ];
 
@@ -125,6 +126,7 @@ const CHECKBOX_RIGHT_PREFS = [
   CONFIG.MINIMAL_STYLE_PREF,
   CONFIG.STRICT_RULES_PREF,
   CONFIG.AI_OLLAMA_WARMUP_PREF,
+  CONFIG.AI_JEV_PREVIEW_PREF,
 ];
 
 const CONTROL_ROW_PREFS = [
@@ -145,6 +147,8 @@ const CONTROL_ROW_PREFS = [
   CONFIG.AI_OPENAI_ENDPOINT_PREF, CONFIG.AI_OPENAI_API_KEY_PREF, CONFIG.AI_OPENAI_MODEL_PREF,
   CONFIG.AI_GEMINI_API_KEY_PREF, CONFIG.AI_GEMINI_MODEL_PREF,
   CONFIG.AI_CUSTOM_ENDPOINT_PREF, CONFIG.AI_CUSTOM_API_KEY_PREF, CONFIG.AI_CUSTOM_MODEL_PREF, CONFIG.AI_CUSTOM_FORMAT_PREF,
+  CONFIG.AI_JEV_API_KEY_PREF, CONFIG.AI_JEV_MODEL_PREF, CONFIG.AI_JEV_CATEGORY_PROVIDER_PREF,
+  CONFIG.AI_JEV_CATEGORY_SOURCE_PREF, CONFIG.AI_JEV_PREVIEW_PREF, CONFIG.AI_JEV_CONFIDENCE_PREF,
 ];
 
 const DROPDOWN_PREFS = [
@@ -156,6 +160,7 @@ const DROPDOWN_PREFS = [
   CONFIG.AI_EXISTING_BEHAVIOR_PREF,
   CONFIG.AI_NEW_GROUP_BEHAVIOR_PREF,
   CONFIG.AI_CUSTOM_FORMAT_PREF,
+  CONFIG.AI_JEV_CATEGORY_SOURCE_PREF, CONFIG.AI_JEV_CATEGORY_PROVIDER_PREF,
 ];
 
 const DROPDOWN_CONFIGS = {
@@ -189,6 +194,7 @@ const DROPDOWN_CONFIGS = {
       ["openai", "OpenAI-compatible — Remote or self-hosted"],
       ["gemini", "Gemini — Google AI Studio"],
       ["custom", "Custom — OpenAI or Ollama-compatible endpoint"],
+      ["jev", "Jev — Quick sorting with meaningful categories"],
     ],
   },
   [CONFIG.AI_SORT_MODE_PREF]: {
@@ -198,6 +204,14 @@ const DROPDOWN_CONFIGS = {
   [CONFIG.AI_CUSTOM_FORMAT_PREF]: {
     defaultValue: "openai",
     options: [["openai", "OpenAI-compatible chat"], ["ollama", "Ollama generate"]],
+  },
+  [CONFIG.AI_JEV_CATEGORY_SOURCE_PREF]: {
+    defaultValue: "reuse",
+    options: [["reuse", "Reuse my categories — Suggest automatically on first use"], ["suggest", "Suggest from my tabs — Refresh categories every sort"], ["manual", "Define my own — Use only saved categories"]],
+  },
+  [CONFIG.AI_JEV_CATEGORY_PROVIDER_PREF]: {
+    defaultValue: "openai",
+    options: [["openai", "OpenAI-compatible"], ["gemini", "Gemini"], ["custom", "Custom"], ["ollama", "Ollama"]],
   },
   [CONFIG.AI_TITLE_LEARNING_PREF]: {
     defaultValue: "off",
@@ -429,7 +443,7 @@ const normalizeAIEngineValue = (value) => {
   if (v === "") return "";
   if (v === "off") return "off";
   if (v === "local") return "local";
-  if (["ollama", "openai", "gemini", "custom"].includes(v)) return v;
+  if (["ollama", "openai", "gemini", "custom", "jev"].includes(v)) return v;
   const hasLocal = v.includes("local");
   const hasOllama = v.includes("ollama");
   if (hasLocal && !hasOllama) return "local";
@@ -523,6 +537,8 @@ const updateConditionalFields = (dialog) => {
   const engine = uiEngine || prefEngine;
   const aiEnabled = engine !== "off";
   const remote = ["openai", "gemini", "custom"].includes(engine);
+  const jev = engine === "jev";
+  const categoryProvider = readStringPref(CONFIG.AI_JEV_CATEGORY_PROVIDER_PREF, "openai");
 
   const setHidden = (row, hidden) => {
     if (!row) return;
@@ -548,18 +564,22 @@ const updateConditionalFields = (dialog) => {
 
   setHidden(rows.existingBehavior, engine !== "ollama" && !remote);
   setHidden(rows.titleLearning, engine !== "ollama");
-  setHidden(rows.newGroupBehavior, !aiEnabled);
-  setHidden(rows.ollamaHost,        engine !== "ollama");
-  setHidden(rows.ollamaModel,       engine !== "ollama");
+  setHidden(rows.newGroupBehavior, !aiEnabled || jev);
+  setHidden(rows.ollamaHost, engine !== "ollama" && !(jev && categoryProvider === "ollama"));
+  setHidden(rows.ollamaModel, engine !== "ollama" && !(jev && categoryProvider === "ollama"));
   setHidden(rows.ollamaWarmup,      engine !== "ollama");
   setHidden(rows.localBatchSize, engine !== "local");
-  setHidden(findPrefRow(dialog, CONFIG.AI_SORT_MODE_PREF), !aiEnabled);
-  setHidden(findPrefRow(dialog, CONFIG.AI_PROVIDER_CONSENT_PREF), !remote);
+  setHidden(findPrefRow(dialog, CONFIG.AI_SORT_MODE_PREF), !aiEnabled || jev);
+  setHidden(findPrefRow(dialog, CONFIG.AI_PROVIDER_CONSENT_PREF), !remote && !jev);
+  for (const field of [CONFIG.AI_JEV_API_KEY_PREF, CONFIG.AI_JEV_MODEL_PREF, CONFIG.AI_JEV_CATEGORY_PROVIDER_PREF,
+    CONFIG.AI_JEV_CATEGORY_SOURCE_PREF, CONFIG.AI_JEV_PREVIEW_PREF, CONFIG.AI_JEV_CONFIDENCE_PREF]) setHidden(findPrefRow(dialog, field), !jev);
+  setHidden(dialog.querySelector(".zao-jev-category-settings"), !jev);
+  setHidden(findSeparatorContainer(dialog, "Jev Quick Sort"), !jev);
   for (const [provider, fields] of Object.entries({
     openai: [CONFIG.AI_OPENAI_ENDPOINT_PREF, CONFIG.AI_OPENAI_API_KEY_PREF, CONFIG.AI_OPENAI_MODEL_PREF],
     gemini: [CONFIG.AI_GEMINI_API_KEY_PREF, CONFIG.AI_GEMINI_MODEL_PREF],
     custom: [CONFIG.AI_CUSTOM_ENDPOINT_PREF, CONFIG.AI_CUSTOM_API_KEY_PREF, CONFIG.AI_CUSTOM_MODEL_PREF, CONFIG.AI_CUSTOM_FORMAT_PREF],
-  })) for (const field of fields) setHidden(findPrefRow(dialog, field), engine !== provider);
+  })) for (const field of fields) setHidden(findPrefRow(dialog, field), engine !== provider && !(jev && categoryProvider === provider));
   setNewGroupOptionsForEngine(dialog, engine);
   for (const prefName of DROPDOWN_PREFS) syncCustomDropdown(dialog, prefName);
   alignSettingRows(dialog);
@@ -795,6 +815,7 @@ const performInject = (dialog) => {
   insertAfter(content, skipEditor, findSeparatorContainer(dialog, "Skip Domains"));
   insertAfter(content, customIconsEditor, findSeparatorContainer(dialog, "Look & Feel"));
   insertAfter(content, backupSection, findSeparatorContainer(dialog, "Backup & Restore"));
+  insertAfter(content, buildSavedCategoryEditor(), findSeparatorContainer(dialog, "Jev Quick Sort"));
 
   tagSeparatorContainers(dialog);
   injectSectionDescriptions(dialog);
@@ -816,6 +837,7 @@ const onOurDialogFound = (dialog) => {
   if (dialog.querySelector(".zao-rules-editor")) {
     const editor = dialog.querySelector(".zao-rules-editor");
     editor?._zaoRefresh?.("dialog reopened");
+    dialog.querySelector(".zao-jev-category-settings")?._zaoRefresh?.();
     return;
   }
 
@@ -824,6 +846,7 @@ const onOurDialogFound = (dialog) => {
       if (dialog.hasAttribute("open")) {
         const editor = dialog.querySelector(".zao-rules-editor");
         editor?._zaoRefresh?.("dialog open attr");
+        dialog.querySelector(".zao-jev-category-settings")?._zaoRefresh?.();
         // Re-sync visibility — Sine may have re-rendered controls on reopen.
         updateConditionalFields(dialog);
       }

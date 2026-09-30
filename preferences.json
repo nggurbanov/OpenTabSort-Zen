@@ -121,6 +121,10 @@
       {
         "label": "Custom — OpenAI or Ollama-compatible endpoint",
         "value": "custom"
+      },
+      {
+        "label": "Jev — Quick sorting with meaningful categories",
+        "value": "jev"
       }
     ]
   },
@@ -234,6 +238,78 @@
     "label": "Local AI batch size (only used when >75 unmatched tabs; smaller = gentler on CPU, larger = faster)",
     "property": "extensions.zen-auto-organize.ai-local-batch-size",
     "defaultValue": "30"
+  },
+  {
+    "type": "separator",
+    "label": "Jev Quick Sort"
+  },
+  {
+    "type": "string",
+    "label": "Jev API key",
+    "property": "extensions.zen-auto-organize.ai-jev-api-key",
+    "defaultValue": ""
+  },
+  {
+    "type": "string",
+    "label": "Jev model",
+    "property": "extensions.zen-auto-organize.ai-jev-model",
+    "defaultValue": "jev-latest"
+  },
+  {
+    "type": "dropdown",
+    "label": "Categories",
+    "property": "extensions.zen-auto-organize.ai-jev-category-source",
+    "defaultValue": "reuse",
+    "options": [
+      {
+        "label": "Reuse my categories — Suggest automatically on first use",
+        "value": "reuse"
+      },
+      {
+        "label": "Suggest from my tabs — Refresh categories every sort",
+        "value": "suggest"
+      },
+      {
+        "label": "Define my own — Use only saved categories",
+        "value": "manual"
+      }
+    ]
+  },
+  {
+    "type": "dropdown",
+    "label": "Category suggestion provider",
+    "property": "extensions.zen-auto-organize.ai-jev-category-provider",
+    "defaultValue": "openai",
+    "options": [
+      {
+        "value": "openai",
+        "label": "OpenAI-compatible"
+      },
+      {
+        "value": "gemini",
+        "label": "Gemini"
+      },
+      {
+        "value": "custom",
+        "label": "Custom"
+      },
+      {
+        "value": "ollama",
+        "label": "Ollama"
+      }
+    ]
+  },
+  {
+    "type": "checkbox",
+    "label": "Preview categories before sorting",
+    "property": "extensions.zen-auto-organize.ai-jev-preview",
+    "defaultValue": false
+  },
+  {
+    "type": "string",
+    "label": "Minimum Jev confidence (0–1)",
+    "property": "extensions.zen-auto-organize.ai-jev-confidence",
+    "defaultValue": "0.5"
   },
   {
     "type": "separator",
