@@ -42,8 +42,12 @@ export const readProviderSettings = (prefs) => {
   return { provider: "off", consentToSendData: false };
 };
 
-const readString = (prefs, name, fallback) =>
-  prefs?.prefHasUserValue?.(name) && prefs.getPrefType(name) === prefs.PREF_STRING ? prefs.getStringPref(name) : fallback;
+const readString = (prefs, name, fallback) => {
+  try { return prefs?.getPrefType(name) === prefs.PREF_STRING ? prefs.getStringPref(name) : fallback; }
+  catch { return fallback; }
+};
 
-const readBool = (prefs, name, fallback) =>
-  prefs?.prefHasUserValue?.(name) && prefs.getPrefType(name) === prefs.PREF_BOOL ? prefs.getBoolPref(name) : fallback;
+const readBool = (prefs, name, fallback) => {
+  try { return prefs?.getPrefType(name) === prefs.PREF_BOOL ? prefs.getBoolPref(name) : fallback; }
+  catch { return fallback; }
+};

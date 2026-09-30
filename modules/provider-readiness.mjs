@@ -32,7 +32,7 @@ const getMissingRequiredFields = (settings) => {
         endpoint: settings.endpoint,
         model: settings.model,
         format: settings.format,
-        ...(settings.format === "openai" ? { apiKey: settings.apiKey } : {}),
+
       });
     default:
       return ["provider"];

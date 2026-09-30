@@ -39,11 +39,12 @@ export const normalizeOllamaHost = (host) => {
 
 // AbortController-based timeout — without this a fetch to a down daemon
 // would hang until the OS TCP timeout (often 60s+), blocking the tidy click.
-const fetchWithTimeout = async (url, opts = {}, timeoutMs = PING_TIMEOUT_MS) => {
+const fetchWithTimeout = async (url, opts = {}, timeoutMs = PING_TIMEOUT_MS, consume = (response) => response) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...opts, signal: controller.signal });
+    const response = await fetch(url, { ...opts, signal: controller.signal });
+    return await consume(response);
   } finally {
     clearTimeout(timer);
   }
@@ -53,15 +54,18 @@ const fetchWithTimeout = async (url, opts = {}, timeoutMs = PING_TIMEOUT_MS) => 
 const pingOllama = async (host) => {
   const base = normalizeOllamaHost(host);
   try {
-    const res = await fetchWithTimeout(`${base}/api/tags`, { cache: "no-store" });
-    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
-    const data = await res.json();
+    const result = await fetchWithTimeout(`${base}/api/tags`, { cache: "no-store" }, PING_TIMEOUT_MS, async (response) => {
+      if (!response.ok) return { error: `HTTP ${response.status}` };
+      return { data: await response.json() };
+    });
+    if (result.error) return { ok: false, error: result.error };
+    const data = result.data;
     const models = Array.isArray(data?.models) ? data.models : [];
     return { ok: true, models };
   } catch (e) {
     return {
       ok: false,
-      error: e.name === "AbortError" ? `timeout after ${PING_TIMEOUT_MS}ms` : (e.message || String(e)),
+      error: e.name === "AbortError" ? `timeout after ${PING_TIMEOUT_MS}ms` : "Ollama network request failed",
     };
   }
 };
@@ -98,46 +102,33 @@ export const checkOllamaReady = async (host, model) => {
  *
  * The caller decides whether `parsed` is the right shape (object vs array).
  */
-export const ollamaGenerateJson = async (host, model, prompt) => {
+export const ollamaGenerateJson = async (host, model, prompt, maxTokens = 4096) => {
   const base = normalizeOllamaHost(host);
-  let res;
   try {
-    res = await fetchWithTimeout(
-      `${base}/api/generate`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model,
-          prompt,
-          stream: false,
-          format: "json",
-          options: { temperature: 0, seed: 42 },
-          ...withKeepAlive(),
-        }),
-      },
-      GENERATE_TIMEOUT_MS
-    );
-  } catch (e) {
-    return {
-      ok: false,
-      errorType: "network",
-      error: e.name === "AbortError" ? `timeout after ${GENERATE_TIMEOUT_MS}ms` : (e.message || String(e)),
-    };
-  }
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    return { ok: false, errorType: "http", error: `HTTP ${res.status}: ${body.slice(0, 200)}` };
-  }
-  const data = await res.json();
-  const text = (data?.response || "").trim();
-  if (!text) {
-    return { ok: false, errorType: "empty", error: "Ollama returned empty response" };
-  }
-  try {
-    return { ok: true, parsed: JSON.parse(text) };
-  } catch {
-    return { ok: false, errorType: "parse", error: `Invalid JSON: ${text.slice(0, 200)}` };
+    return await fetchWithTimeout(`${base}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, prompt, stream: false, format: "json",
+        options: { temperature: 0, seed: 42, num_predict: Math.min(4096, Math.max(64, Number.isFinite(maxTokens) ? Math.trunc(maxTokens) : 4096)) },
+        ...withKeepAlive(),
+      }),
+    }, GENERATE_TIMEOUT_MS, async (res) => {
+      if (!res.ok) {
+        try { await res.body?.cancel(); } catch {}
+        return { ok: false, errorType: "http", status: res.status, error: `HTTP ${res.status}` };
+      }
+      let data;
+      try { data = await res.json(); } catch (error) {
+        if (error.name === "AbortError") throw error;
+        return { ok: false, errorType: "parse", error: "Ollama returned invalid response JSON" };
+      }
+      const text = typeof data?.response === "string" ? data.response.trim() : "";
+      if (!text) return { ok: false, errorType: "empty", error: "Ollama returned empty response" };
+      try { return { ok: true, parsed: JSON.parse(text.replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, "$1")) }; }
+      catch { return { ok: false, errorType: "parse", error: "Ollama returned invalid classification JSON" }; }
+    });
+  } catch (error) {
+    return { ok: false, errorType: "network", error: error.name === "AbortError" ? `timeout after ${GENERATE_TIMEOUT_MS}ms` : "Ollama network request failed" };
   }
 };
 

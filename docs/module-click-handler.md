@@ -1,73 +1,13 @@
-# `modules/click-handler.mjs` — Tidy-click orchestrator
+# `modules/click-handler.mjs` — sorting orchestration
 
-The function the toolbar button invokes. Sequences all the passes.
+`handleOrganizeClick()` runs one sort at a time. It loads runnable rules, captures the eligible tab list and current workspace, excludes skip-domain matches, and plans deterministic rule moves without modifying the DOM.
 
-## Export
+Rules + AI classifies unmatched tabs. Full AI and Fresh/Preview Only classify all eligible non-skipped tabs. Local, Ollama, and remote providers share the same apply boundary. Ollama can also propose reviewed title-rule changes.
 
-| Name | Notes |
-|---|---|
-| `handleOrganizeClick()` | async. Idempotent: clicking with nothing to do is a no-op. |
+Rule-saving remote/Ollama plans and all new-rule plans open the preview. Local planned/existing reassignment controls stay disabled because those controls require a constrained classifier; they never silently switch to Ollama. Remote providers use the selected service for reassignment.
 
-## Sequence
+Cancel returns before group consolidation, tab moves, strict-rule ejection, rule persistence, ordering, or styling. After asynchronous work, the workspace, tab references/order/URLs/titles/membership, and rule preference must still match the captured snapshot. `sort-plan.mjs` validates every assigned live tab exactly once before any application.
 
-```
-1.  wiggleButton()                    — 600ms wand animation for feedback
-2.  consolidateDuplicateGroups(ws)    — merge same-named groups
-3.  loadRules() + readSkipDomainsPref()— pref → file → defaults; + skip-domain patterns
-4.  dissolveStaleGroups(ws, rules)    — ungroup tabs from non-rule groups,
-                                        move to top of workspace (via gBrowser.ungroupTab)
-5.  getEligibleTabs()                 — fresh enumeration after #4
-6.  skip-domain parking               — tabs matching the skip list are moved
-                                        to the top via moveTabsToTop, excluded
-                                        from the rest of the pipeline
-7.  runPass1(tabs, rules)             — plan moves for non-skipped tabs
-8.  console.groupCollapsed(...)       — dry-run logging
-9.  applyPass1(byGroup, ws, rules)    — execute moves (skipped in fresh-like AI modes)
-10. strict-rule ejection              — if strict-rules pref is on, eject any
-                                        unmatched tab still in a rule-named group
-                                        via moveTabsToTop
-11. getAIEngine() === "off" ? skip Pass 2 : continue
-12. setButtonThinking(true)           — start wand pulse animation
-13. runPass2()                        — branches on engine:
-       "local"  → ai.mjs runPass2()       (existing groups only)
-       "ollama" → ollama.mjs runPass2Ollama() OR runPass2OllamaFresh()
-                  depending on ai-new-group-behavior
-14. Plan Mode gate (if applicable):
-       getAINewGroupBehavior() in ("identify-only", "auto-add",
-       "always-add" with new groups) → showPreviewModal(plan)
-       Modal returns the user-edited plan. Apply waits for confirmation.
-15. applyPass2(plan, ws, rules)       — execute moves; create new groups;
-                                        optionally grow rules array
-16. (fresh-categories mode) dissolve any group with zero tabs after rebuild
-17. moveUngroupedToTop(ws)            — anything left ungrouped goes to top
-18. syncAllGroupColors(ws, rules)     — push colors onto ALL rule-matched groups
-19. logNestingDiagnostic()            — warn if any tab-group ended up nested
-                                        (a Zen DOM-API edge case)
-20. gZenWorkspaces.updateTabsContainers() + read gBrowser.tabs.length
-                                      — tab-list settle: rebuild Firefox's _tPos
-                                        cache so the first drag attempt on a
-                                        sorted tab works (avoids Windows
-                                        "sticky-drag" symptom).
-21. setButtonThinking(false)          — restore wand
-22. console.groupEnd()
-```
+An accepted plan consolidates duplicate labels, parks explicitly skipped domains, applies rule moves where applicable, then applies AI moves. Failed/skipped AI tabs retain their membership. Strict mode protects unresolved classifications. Cleanup removes empty groups only in the original workspace and resynchronizes Zen’s tab containers.
 
-## Why dissolve runs BEFORE Pass 1
-
-If a rule named "Calendar" gets renamed to "Schedule":
-- `Calendar` is no longer in the rules → dissolved → its tabs land at the top, ungrouped
-- Pass 1 then sees these tabs as ungrouped (no `currentGroup`)
-- If their hostname matches a rule (e.g. the new `Schedule`), they get moved into Schedule
-
-Without dissolve, the tabs would still be inside `Calendar` and Pass 1 would have to also handle the rename.
-
-## Logging output
-
-Every click produces a collapsed console group with:
-- Per-tab assignment table (action column shows leave/stay/move/group)
-- Pending moves by group
-- Unmatched tabs (left in place)
-- Apply result counts
-- Color-sync count
-
-Useful for debugging "why didn't my tab get grouped?" type questions — the assignment table shows exactly which rule matched (or didn't).
+Full AI, Fresh Rebuild, and Preview Only supply transient apply options with rule persistence disabled. Existing manual groups are not dissolved as a pre-pass: matched tabs can move to the renamed rule without destroying unmatched tabs.

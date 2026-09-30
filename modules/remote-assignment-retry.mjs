@@ -1,67 +1,75 @@
 const RETRY_BATCH_SIZES = [12, 4, 1];
 
-export const collectProviderTabMap = async ({
-  tabs,
-  snippets = [],
-  initialBatchSize,
-  label,
-  buildPrompt,
-  fetchJson,
-}) => {
+export const normalizeProviderLabel = (value) => {
+  if (typeof value !== "string") return null;
+  const label = value.trim().replace(/^\s*(?:new\s+)?(?:category|label|topic|bucket|group)\s*[:\-–]\s*/i, "").trim();
+  return label && label.length <= 120 && !/[\u0000-\u001f\u007f]/u.test(label) ? label : null;
+};
+
+export const clusterAssignments = (parsed, count) => {
+  const assignments = new Map();
+  const conflicts = new Set();
+  const accept = (index, label) => {
+    if (!Number.isInteger(index) || index < 0 || index >= count) return;
+    if (assignments.has(index) && assignments.get(index) !== label) conflicts.add(index);
+    else assignments.set(index, label);
+  };
+  for (const group of Array.isArray(parsed?.groups) ? parsed.groups : []) {
+    const label = normalizeProviderLabel(group?.name);
+    if (!label || !Array.isArray(group?.tabs)) continue;
+    for (const index of group.tabs) accept(index, label);
+  }
+  for (const index of Array.isArray(parsed?.skipped) ? parsed.skipped : []) accept(index, "skipped");
+  for (const index of conflicts) assignments.delete(index);
+  return Object.fromEntries(assignments);
+};
+
+export const collectProviderTabMap = async ({ tabs, snippets = [], initialBatchSize, label, buildPrompt, fetchJson, validateLabel = normalizeProviderLabel }) => {
   const parsedByIndex = new Map();
   const failures = [];
   let pending = tabs.map((_, index) => index);
-
+  let terminal = false;
   for (const batchSize of retryBatchSizes(initialBatchSize)) {
-    if (pending.length === 0) break;
+    if (!pending.length || terminal) break;
     const nextPending = [];
     for (const indices of chunkIndices(pending, batchSize)) {
       try {
-        collectBatchAssignments({
-          parsedByIndex,
-          pending: nextPending,
-          indices,
-          parsed: await fetchJson(buildPrompt(
-            indices.map((index) => tabs[index]),
-            indices.map((index) => snippets[index]),
-          )),
-        });
+        const parsed = await fetchJson(buildPrompt(indices.map((index) => tabs[index]), indices.map((index) => snippets[index])), indices.length);
+        const assignedLocals = new Set();
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          for (const [key, value] of Object.entries(parsed)) {
+            if (!/^(0|[1-9]\d*)$/.test(key)) continue;
+            const localIndex = Number(key);
+            const normalized = validateLabel(value);
+            if (!Number.isSafeInteger(localIndex) || localIndex >= indices.length || normalized === null) continue;
+            parsedByIndex.set(indices[localIndex], normalized);
+            assignedLocals.add(localIndex);
+          }
+        }
+        for (let index = 0; index < indices.length; index++) if (!assignedLocals.has(index)) nextPending.push(indices[index]);
       } catch (error) {
-        if (batchSize === 1) failures.push(`${label} tab ${indices[0]}: ${error.message || error}`);
+        if (error.terminal || error.retryable === false || error.name === "AbortError") {
+          failures.push(`${label}: ${error.message || "request failed"}`);
+          terminal = true;
+          break;
+        }
+        if (error.retryable === false || batchSize === 1) failures.push(`${label}: ${error.message || "request failed"}`);
         else nextPending.push(...indices);
       }
     }
     pending = nextPending;
   }
-
-  if (pending.length > 0) failures.push(`${label} missing assignments for ${pending.length} tab(s)`);
-  return { parsedByIndex, failures, missing: pending };
-};
-
-const collectBatchAssignments = ({ parsedByIndex, pending, indices, parsed }) => {
-  const assignedLocals = new Set();
-  for (const [key, value] of Object.entries(parsed)) {
-    const localIndex = Number.parseInt(key, 10);
-    if (!Number.isFinite(localIndex) || localIndex < 0 || localIndex >= indices.length) continue;
-    parsedByIndex.set(indices[localIndex], value);
-    assignedLocals.add(localIndex);
-  }
-  for (let localIndex = 0; localIndex < indices.length; localIndex += 1) {
-    if (!assignedLocals.has(localIndex)) pending.push(indices[localIndex]);
-  }
+  const missing = tabs.map((_, index) => index).filter((index) => !parsedByIndex.has(index));
+  if (missing.length && !failures.length) failures.push(`${label} missing assignments for ${missing.length} tab(s)`);
+  return { parsedByIndex, failures, missing, terminal };
 };
 
 const retryBatchSizes = (initialBatchSize) => {
-  const normalizedInitial = Number.isFinite(initialBatchSize) && initialBatchSize > 0
-    ? Math.floor(initialBatchSize)
-    : RETRY_BATCH_SIZES[0];
-  return [...new Set([normalizedInitial, ...RETRY_BATCH_SIZES].filter((size) => size <= normalizedInitial))];
+  const width = Number.isFinite(initialBatchSize) && initialBatchSize >= 1 ? Math.floor(initialBatchSize) : RETRY_BATCH_SIZES[0];
+  return [...new Set([width, ...RETRY_BATCH_SIZES].filter((size) => size <= width))];
 };
-
-const chunkIndices = (indices, batchSize) => {
+const chunkIndices = (indices, size) => {
   const chunks = [];
-  for (let start = 0; start < indices.length; start += batchSize) {
-    chunks.push(indices.slice(start, start + batchSize));
-  }
+  for (let start = 0; start < indices.length; start += size) chunks.push(indices.slice(start, start + size));
   return chunks;
 };

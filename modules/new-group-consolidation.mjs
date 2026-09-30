@@ -19,8 +19,8 @@ const lightStem = (word) =>
 
 const normalizeNameForDedupe = (name) => {
   const words = String(name || "")
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, " ")
+    .normalize("NFC").toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M}\s-]/gu, " ")
     .replace(/\s+/g, " ")
     .trim()
     .split(" ")
@@ -37,12 +37,12 @@ const dedupeSimilarNewGroups = (newGroups) => {
   const out = [];
   for (const group of newGroups) {
     const norm = normalizeNameForDedupe(group.name);
-    if (byNorm.has(norm)) {
+    if (norm && byNorm.has(norm)) {
       out[byNorm.get(norm)].tabs.push(...group.tabs);
       continue;
     }
     byNorm.set(norm, out.length);
-    out.push({ ...group });
+    out.push({ ...group, tabs: [...group.tabs] });
   }
   return out;
 };
@@ -55,7 +55,7 @@ const applyMergePlan = (newGroups, parsed) => {
 
   for (const [origName, targetRaw] of Object.entries(parsed)) {
     const origKey = String(origName || "").trim().toLowerCase();
-    const targetName = String(targetRaw || "").trim();
+    const targetName = typeof targetRaw === "string" ? targetRaw.trim() : "";
     if (!origKey || !targetName || consumed.has(origKey)) continue;
     const source = origByLower.get(origKey);
     if (!source) continue;

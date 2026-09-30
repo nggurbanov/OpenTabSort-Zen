@@ -63,6 +63,7 @@ export const scenarioPrefs = ({ scenario, providerPort, marionettePort }) => {
     ["sine.engine.auto-update", false],
     ["browser.startup.cache", false],
     ["browser.startup.page", 0],
+    ["zen.welcome-screen.seen", true],
     ["marionette.port", marionettePort],
     ["extensions.zen-auto-organize.ai-engine", "custom"],
     ["extensions.zen-auto-organize.ai-provider-consent", true],

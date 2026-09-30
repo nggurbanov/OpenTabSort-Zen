@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.3.0 — 2026-09-30
+
+### Upstream refresh
+- Merged Zen Tab Wand through upstream commit `8c098c7` (2026-09-20). Upstream and fork version numbers are independent.
+- Added title-match chips and matching priority, reviewed Ollama title learning, gradients, emoji/custom icons, expanded backup data, and improved rule editing.
+- Retained upstream Firefox ML invocation/tensor handling, topic naming, leftover clustering, and cluster/name consolidation.
+- Preserved the fork’s OpenAI-compatible, Gemini, custom endpoint, consent, Full AI, provider batching, and explicit ungroup-before-create behavior.
+
+### Correctness and usability
+- Plan all changes before preview; Cancel leaves tabs and rules intact. Reject stale plans after workspace, tab, or rule changes; prevent overlapping sorts.
+- Preserve failed/skipped tabs and manual groups. Full AI, Preview Only, and Fresh Rebuild do not change saved rules.
+- Validate provider indices, labels, and cluster memberships; stop terminal authorization/configuration errors, retain earlier successful batches, and retry only missing/invalid decisions.
+- Keep request timeouts active through response-body reads; exclude raw provider responses and credentials from error messages.
+- Preserve distinct pages on the same hostname in Local AI and provider inputs, while batching expensive work.
+- Preserve Unicode names/title matches, distinguish colliding new-group names, and retain title proposals during preview reassignment.
+- Preserve intentionally empty rule lists, incomplete drafts, gradients, icons, and title fields in imports and AI saves.
+- Restore every remote provider in the settings UI; allow custom servers without keys; combine duplicate Rules First/Hybrid choices while accepting old preferences.
+- Synchronize manifest/package/build version, update install links, and make checks portable. Headed browser QA skips onboarding only in disposable profiles.
+
+## Fork 1.2.0–1.2.3 — 2026-06-18 to 2026-06-23
+
+- Added Rules First/Hybrid/Full AI sorting and bounded provider batches.
+- Fixed remote Full AI application and explicit ungroup-before-create behavior.
+- Added real Zen provider E2E fixtures, quality scoring, and an isolated-profile runner.
+
+## Fork 1.1.0 — 2026-06-18
+
+- Introduced the OpenTabSort Zen identity, configurable OpenAI-compatible/Gemini/custom providers, explicit data consent, provider request helpers, and validation.
+
+The entries below are inherited upstream history. Upstream’s changelog stops at 1.0.2; the 1.3.0 refresh above records later merged behavior from source and commits.
+
+
 ## 1.0.2 — 2026-06-01
 
 ### Added

@@ -2,7 +2,9 @@
 // Pure logic over rules + tab info; applyPass1 mutates the DOM via gBrowser APIs.
 
 import { LOG } from "./config.mjs";
-import { findExistingGroup, expandIfCollapsed, collapseGroup, applyGroupColor, findSafeInsertAnchor } from "./groups.mjs";
+import { findExistingGroup, expandIfCollapsed, collapseGroup, applyGroupAppearance, findSafeInsertAnchor } from "./groups.mjs";
+import { getMatchMode } from "./rules.mjs";
+import { normalizeCase } from "./dedupe.mjs";
 
 // Match a hostname against a single rule-domain pattern.
 //   "host.com"    matches the bare host AND any subdomain
@@ -16,14 +18,41 @@ export const matchesDomain = (hostname, pattern) => {
   return hostname === pattern || hostname.endsWith("." + pattern);
 };
 
-// First-match-wins: find the first rule whose domain patterns include the tab's hostname.
-export const findGroupForTab = (tabInfo, rules) => {
+export const matchesTitle = (title, term) => {
+  if (!title || !term) return false;
+  return normalizeCase(title).includes(normalizeCase(term));
+};
+
+const ruleMatchesDomain = (tabInfo, rule) =>
+  (rule.domains || []).some((d) => matchesDomain(tabInfo.hostname, d));
+
+const ruleMatchesTitle = (tabInfo, rule) =>
+  (rule.titleTerms || []).some((t) => matchesTitle(tabInfo.title, t));
+
+const findByDomain = (tabInfo, rules) => {
   for (const rule of rules) {
-    if (rule.domains.some((d) => matchesDomain(tabInfo.hostname, d))) {
-      return rule.name;
-    }
+    if (ruleMatchesDomain(tabInfo, rule)) return rule.name;
   }
   return null;
+};
+
+const findByTitle = (tabInfo, rules) => {
+  for (const rule of rules) {
+    if (ruleMatchesTitle(tabInfo, rule)) return rule.name;
+  }
+  return null;
+};
+
+// First-match-wins within the active match source. Global mode decides whether
+// URL or title terms are considered, and which source gets first crack.
+export const findGroupForTab = (tabInfo, rules) => {
+  const mode = getMatchMode();
+  if (mode === "url-only") return findByDomain(tabInfo, rules);
+  if (mode === "title-only") return findByTitle(tabInfo, rules);
+  if (mode === "title-then-url") {
+    return findByTitle(tabInfo, rules) || findByDomain(tabInfo, rules);
+  }
+  return findByDomain(tabInfo, rules) || findByTitle(tabInfo, rules);
 };
 
 /**
@@ -69,7 +98,7 @@ export const applyPass1 = (byGroup, workspaceId, rules) => {
   let movedToNew = 0;
   const errors = [];
 
-  const colorByName = new Map(rules.filter((r) => r.color).map((r) => [r.name, r.color]));
+  const ruleByName = new Map(rules.map((r) => [r.name, r]));
 
   for (const [groupName, items] of byGroup) {
     // Resolve each item's tab info to its live DOM node (`_tab`) and re-check the
@@ -102,7 +131,7 @@ export const applyPass1 = (byGroup, workspaceId, rules) => {
           gBrowser.moveTabToExistingGroup(tab, existing);
           movedToExisting++;
         }
-        if (colorByName.has(groupName)) applyGroupColor(existing, colorByName.get(groupName));
+        if (ruleByName.has(groupName)) applyGroupAppearance(existing, ruleByName.get(groupName));
         if (wasCollapsed) {
           // Defer one tick so Firefox's tab-insertion bookkeeping completes
           // before we collapse — otherwise the new tab's aria-hidden may
@@ -126,7 +155,7 @@ export const applyPass1 = (byGroup, workspaceId, rules) => {
         if (newGroup) {
           createdGroups++;
           movedToNew += tabsForGroup.length;
-          if (colorByName.has(groupName)) applyGroupColor(newGroup, colorByName.get(groupName));
+          if (ruleByName.has(groupName)) applyGroupAppearance(newGroup, ruleByName.get(groupName));
         } else {
           console.warn(`${LOG} addTabGroup returned no element for "${groupName}"`);
           errors.push({ group: groupName, error: "addTabGroup returned null" });
