@@ -30,7 +30,7 @@ Two passes:
 
 AI stays off unless you enable it. Choose Firefox Local AI, [Ollama](https://ollama.com), OpenAI-compatible, Gemini, or a custom endpoint. Remote providers require explicit consent before any tab context is fetched or sent.
 
-**Version 1.4.0** adds live Jev sorting with optional LLM category suggestions. It incorporates upstream changes through September 20, 2026, while retaining the fork’s remote providers, bounded batches, and Full AI mode. Based on the MIT-licensed [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand). See [CHANGELOG.md](CHANGELOG.md) for the actual changes.
+**Version 1.4.1** adds live Jev sorting with optional LLM category suggestions. It incorporates upstream changes through September 20, 2026, while retaining the fork’s remote providers, bounded batches, and Full AI mode. Based on the MIT-licensed [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand). See [CHANGELOG.md](CHANGELOG.md) for the actual changes.
 
 ### A practical workflow
 
@@ -84,7 +84,17 @@ Other AI engines fetch a small page-context snippet (`og:type`, `og:site_name`, 
 
 ## Quick sorting with Jev
 
-Choose **Jev** in AI Sorting, enter your [TypeSafe API key](https://console.typesafe.ai/settings/keys), and enable data-sending consent. Under **Jev Quick Sort**, choose a category suggestion provider (OpenAI-compatible, Gemini, Custom, or Ollama) and fill in that provider's existing settings. Alternatively, define your categories yourself without configuring an LLM.
+Choose **Decision models — Jev and compatible APIs** in AI Sorting, enter your decision provider API key, and enable data-sending consent. Under **Decision Quick Sort**, choose a category suggestion provider (OpenAI-compatible, Gemini, Custom, or Ollama) and fill in that provider's existing settings. Alternatively, define your categories yourself without configuring an LLM.
+
+The **Decision API endpoint** is a full request URL, and **Decision model ID** is unrestricted. Existing installations retain the TypeSafe endpoint and their saved model/key.
+
+| Provider | Full endpoint | Example model ID |
+| --- | --- | --- |
+| TypeSafe | `https://api.typesafe.ai/v1/systemone` | `jev-latest` |
+| OpenRouter | `https://openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` or `jev-latest` |
+| Compatible custom provider | Your full HTTP(S) endpoint | Any model ID supported there |
+
+Use the key belonging to the selected endpoint. No path is appended and requests are never redirected or silently retried against another provider. OpenRouter documents the same [System One request and response format](https://openrouter.ai/docs/guides/community/typesafe-sdk). Other decision models work when their endpoint accepts `model`, `state`, and `questions` and returns typed choice answers with confidence and probabilities. An API with a different schema needs an adapter; future OpenAI Decisions API compatibility is not yet verified. Changing the endpoint or model while sorting stops subsequent batches.
 
 Click the wand. On first use, the LLM looks at the eligible tab list and proposes up to 10 categories with short names, scope descriptions, and examples. Jev then chooses a category for each tab, answering up to 30 tab questions in parallel per request. Batches shrink when needed to fit the request budget. Each completed batch applies immediately, with live progress and a brief highlight. Reduced-motion preferences disable highlights; the selected tab is processed last and is never highlighted or replaced by another selected tab.
 
@@ -102,7 +112,7 @@ Jev regroups all eligible tabs, including already grouped tabs, by category mean
 
 **Stop** cancels the active request and keeps completed moves. **Undo sort** restores the previous group membership, tab order, group appearance, and collapsed state during the current session. Undo refuses to overwrite a layout edited afterwards. Workspace, tab, rule, or provider-setting changes during sorting stop further batches. Provider failures keep completed batches and leave remaining tabs untouched.
 
-Jev and the category provider receive bounded titles, hostname/path context, and current group labels. URL credentials, query strings, and fragments are omitted, and Jev never fetches page snippets. TypeSafe receives your chosen category descriptions and examples as well. Keys remain in local preferences and are excluded from backups and diagnostics. The currently documented API is [`POST /v1/systemone`](https://docs.typesafe.ai/api); this integration defaults to `jev-latest`.
+Jev and the category provider receive bounded titles, hostname/path context, and current group labels. URL credentials, query strings, and fragments are omitted, and Jev never fetches page snippets. Your selected decision provider receives your chosen category descriptions and examples as well. Keys remain in local preferences and are excluded from backups and diagnostics. The currently documented API is [`POST /v1/systemone`](https://docs.typesafe.ai/api); this integration defaults to `jev-latest`.
 
 For Ollama, the default model is `qwen2.5:1.5b` (~1 GB, runs on most GPUs). If you have 8+ GB VRAM, `qwen2.5:7b` is noticeably more accurate — change the model name in settings.
 

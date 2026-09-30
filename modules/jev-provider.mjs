@@ -1,7 +1,16 @@
+import { CONFIG } from "./config.mjs";
 import { compactTab, parseCategories } from "./jev-categories.mjs";
 
 export const JEV_BATCH_SIZE = 30;
-const JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
+// Full URLs are intentional: compatible providers use different endpoint paths.
+export const decisionEndpoint = (value = CONFIG.AI_JEV_ENDPOINT_DEFAULT) => {
+  let url;
+  try { url = new URL(value); } catch { throw new JevError("Enter a valid decision API endpoint URL."); }
+  if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || url.hash) {
+    throw new JevError("Use an HTTP(S) decision endpoint without embedded credentials or a fragment.");
+  }
+  return url.href;
+};
 
 export const buildJevRequest = (tabs, categories, model = "jev-latest") => {
   const taxonomy = parseCategories(categories);
@@ -30,7 +39,7 @@ export const jevRequestFits = (request) => {
 };
 
 export const parseJevAnswers = (body, tabs, categories, threshold = 0.5) => {
-  if (!body?.answers || typeof body.answers !== "object" || Array.isArray(body.answers)) throw new Error("Jev returned no answers.");
+  if (!body?.answers || typeof body.answers !== "object" || Array.isArray(body.answers)) throw new Error("Decision provider returned no answers.");
   const taxonomy = parseCategories(categories);
   const names = new Map(taxonomy.map((category) => [category.id, category.name]));
   return tabs.map((tabInfo, index) => {
@@ -59,9 +68,10 @@ const waitForRetry = (ms, signal) => new Promise((resolve, reject) => {
 });
 
 export const classifyJevBatch = async (tabs, categories, settings, signal, fetchImpl = fetch) => {
-  if (!settings.consent || !settings.apiKey || !settings.model) throw new Error("Configure Jev and allow sending tab metadata before sorting.");
+  if (!settings.consent || !settings.apiKey || !settings.model) throw new Error("Configure a decision provider and allow sending tab metadata before sorting.");
+  const endpoint = decisionEndpoint(settings.endpoint);
   const payload = buildJevRequest(tabs, categories, settings.model);
-  if (!jevRequestFits(payload)) throw new JevError("Jev input is too large. Shorten category names, descriptions or examples.");
+  if (!jevRequestFits(payload)) throw new JevError("Decision input is too large. Shorten category names, descriptions or examples.");
   for (let attempt = 0; attempt < 3; attempt++) {
     signal?.throwIfAborted();
     const controller = new AbortController();
@@ -71,8 +81,8 @@ export const classifyJevBatch = async (tabs, categories, settings, signal, fetch
     let retryMs = null;
     try {
       if (signal?.aborted) controller.abort();
-      const response = await fetchImpl(JEV_ENDPOINT, {
-        method: "POST", credentials: "omit", signal: controller.signal,
+      const response = await fetchImpl(endpoint, {
+        method: "POST", credentials: "omit", redirect: "error", signal: controller.signal,
         headers: { "content-type": "application/json", Authorization: `Bearer ${settings.apiKey}` },
         body: JSON.stringify(payload),
       });
@@ -83,13 +93,13 @@ export const classifyJevBatch = async (tabs, categories, settings, signal, fetch
         retryMs = Math.min(10000, Math.max(500 * 2 ** attempt, Number.isFinite(retryDelay) ? retryDelay : 0));
         await response.body?.cancel();
       } else {
-        if (!response.ok) { await response.body?.cancel(); throw new JevError(`Jev HTTP ${response.status}`); }
+        if (!response.ok) { await response.body?.cancel(); throw new JevError(`Decision provider HTTP ${response.status}`); }
         return parseJevAnswers(await response.json(), tabs, categories, settings.confidence);
       }
     } catch (error) {
       if (signal?.aborted) throw new DOMException("Sorting stopped", "AbortError");
       if (error instanceof JevError) throw error;
-      throw new JevError(controller.signal.aborted ? "Jev timed out." : "Jev request failed or returned an invalid response.");
+      throw new JevError(controller.signal.aborted ? "Decision provider timed out." : "Decision request failed or returned an invalid response.");
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener("abort", abort);
@@ -105,7 +115,7 @@ export const sortJevBatches = async ({ tabs, categories, settings, signal, isCur
     if (!isCurrent()) throw new JevError("Tabs or settings changed. Sorting stopped; completed moves can be undone.");
     let batch = tabs.slice(offset, offset + JEV_BATCH_SIZE);
     while (!jevRequestFits(buildJevRequest(batch, categories, settings.model))) {
-      if (batch.length === 1) throw new JevError("Jev input is too large. Shorten category names, descriptions or examples.");
+      if (batch.length === 1) throw new JevError("Decision input is too large. Shorten category names, descriptions or examples.");
       batch = batch.slice(0, Math.ceil(batch.length / 2));
     }
     const results = await classify(batch, categories, settings, signal);

@@ -13,6 +13,34 @@ const tabs = (count) => Array.from({ length: count }, (_, id) => ({ title: `Tab 
 const answer = (choice = "c0", confidence = 0.9) => ({ type: "choice", choice, confidence,
   probabilities: { c0: choice === "c0" ? 0.9 : 0.05, c1: choice === "c1" ? 0.9 : 0.05, none: choice === "none" ? 0.9 : 0.05 } });
 
+test("decision endpoints preserve custom paths and arbitrary model IDs with no fallback", async () => {
+  for (const [endpoint, model] of [
+    ["https://openrouter.ai/api/v1/systemone", "typesafe/jev-1.13"],
+    ["https://openrouter.ai/api/alpha/decisions", "~typesafe/jev-latest"],
+    ["http://127.0.0.1:8080/custom/decide", "another/decision-model"],
+  ]) {
+    let calls = 0;
+    const result = await classifyJevBatch(tabs(1), categories, { ...settings, endpoint, model }, undefined, async (url, init) => {
+      calls++;
+      assert.equal(url, endpoint);
+      assert.equal(JSON.parse(init.body).model, model);
+      assert.equal(init.headers.Authorization, "Bearer test-key");
+      assert.equal(init.redirect, "error");
+      return Response.json({ answers: { t0: answer() } });
+    });
+    assert.equal(calls, 1);
+    assert.equal(result[0].groupName, "School");
+  }
+});
+
+test("invalid decision endpoints are rejected before sending tab data", async () => {
+  for (const endpoint of ["", "not a URL", "file:///tmp/api", "https://user:pass@example.com/decide", "https://example.com/decide#fragment"]) {
+    let calls = 0;
+    await assert.rejects(classifyJevBatch(tabs(1), categories, { ...settings, endpoint }, undefined, async () => { calls++; }));
+    assert.equal(calls, 0);
+  }
+});
+
 test("category metadata excludes URL credentials, query strings, fragments and live tab objects", () => {
   // Given
   const tab = { ...tabs(1)[0], url: "https://user:pass@example.com/course?token=private#secret", currentGroup: "School" };
@@ -63,6 +91,11 @@ test("saved categories are isolated by workspace and automatic preview defaults 
   assert.equal(readSavedCategories(prefs, "work")[0].name, "Business");
   assert.equal(readJevSettings(prefs).preview, false);
   assert.equal(readJevSettings(prefs).source, "reuse");
+  assert.equal(readJevSettings(prefs).endpoint, "https://api.typesafe.ai/v1/systemone");
+  values.set(CONFIG.AI_JEV_ENDPOINT_PREF, " https://openrouter.ai/api/v1/systemone ");
+  values.set(CONFIG.AI_JEV_MODEL_PREF, "typesafe/jev-1.13");
+  assert.equal(readJevSettings(prefs).endpoint, "https://openrouter.ai/api/v1/systemone");
+  assert.equal(readJevSettings(prefs).model, "typesafe/jev-1.13");
   assert.equal(values.has(CONFIG.AI_JEV_API_KEY_PREF), false);
 });
 
@@ -98,7 +131,7 @@ test("Jev authentication failure stops after one request and omits raw provider 
   let calls = 0;
   const fetchImpl = async () => { calls++; return new Response("test-key sensitive page contents", { status: 401 }); };
   // When / Then
-  await assert.rejects(classifyJevBatch(tabs(1), categories, settings, undefined, fetchImpl), { message: "Jev HTTP 401" });
+  await assert.rejects(classifyJevBatch(tabs(1), categories, settings, undefined, fetchImpl), { message: "Decision provider HTTP 401" });
   assert.equal(calls, 1);
 });
 

@@ -6,7 +6,7 @@ import { readJevSettings, readSavedCategories, writeSavedCategories, suggestCate
 import { readProviderSettings } from "./provider-settings.mjs";
 import { getProviderReadiness } from "./provider-readiness.mjs";
 import { providerJson } from "./remote-provider.mjs";
-import { JevError, sortJevBatches } from "./jev-provider.mjs";
+import { JevError, sortJevBatches, decisionEndpoint } from "./jev-provider.mjs";
 import { previewCategories, showJevProgress, highlightSortedTab } from "./jev-ui.mjs";
 import { showToast } from "./ui-toast.mjs";
 
@@ -76,18 +76,19 @@ export const undoJevSort = () => {
     }
     for (const group of created) if (group.isConnected && !group.querySelector("tab")) group.remove();
     window.gZenWorkspaces.updateTabsContainers?.();
-    lastSort = null; document.querySelector(".zao-jev-progress")?.remove(); showToast("Jev sort undone.");
+    lastSort = null; document.querySelector(".zao-jev-progress")?.remove(); showToast("Decision sort undone.");
   } catch (error) { console.warn(`${LOG} undo failed: ${error.message}`); showToast("Undo could not finish. The remaining tabs were kept."); }
 };
 
 export const runJevSort = async ({ tabs, workspaceId, snapshot }) => {
   const settings = readJevSettings(Services.prefs);
-  if (!settings.consent || !settings.apiKey || !settings.model) { showToast("Configure Jev and allow sending tab metadata in settings first."); return; }
+  if (!settings.consent || !settings.endpoint || !settings.apiKey || !settings.model) { showToast("Configure a decision provider and allow sending tab metadata in settings first."); return; }
+  try { decisionEndpoint(settings.endpoint); } catch (error) { showToast(error.message); return; }
   let categories = readSavedCategories(Services.prefs, workspaceId);
   const needsSuggestion = settings.source === "suggest" || (!categories.length && settings.source === "reuse");
   const categoryProvider = readProviderSettings(Services.prefs, settings.categoryProvider);
-  if (needsSuggestion && !getProviderReadiness(categoryProvider).ok) { showToast("Configure the category suggestion provider, or define your Jev categories in settings."); return; }
-  if (!needsSuggestion && !categories.length) { showToast("Define at least one Jev category in settings before sorting."); return; }
+  if (needsSuggestion && !getProviderReadiness(categoryProvider).ok) { showToast("Configure the category suggestion provider, or define your categories in settings."); return; }
+  if (!needsSuggestion && !categories.length) { showToast("Define at least one category in settings before sorting."); return; }
   invalidateJevUndo();
   const controller = new AbortController(); activeSort = controller;
   const original = captureLayout();
@@ -147,7 +148,7 @@ export const runJevSort = async ({ tabs, workspaceId, snapshot }) => {
     });
     ui.finish(`Sorted ${result.processed} tabs · ${moved} moved · ${result.skipped + result.unresolved} kept`, changed);
   } catch (error) {
-    const message = controller.signal.aborted ? "Sorting stopped. Completed moves were kept." : error instanceof JevError ? error.message : "Jev sorting could not finish. Check your provider settings.";
+    const message = controller.signal.aborted ? "Sorting stopped. Completed moves were kept." : error instanceof JevError ? error.message : "Decision sorting could not finish. Check your provider settings.";
     console.warn(`${LOG} ${message}`); ui.finish(message, changed);
   } finally {
     if (changed) lastSort = { workspaceId, original, expected, created };

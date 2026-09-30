@@ -57,7 +57,7 @@ export const buildCategoryEditor = (categories, { onSave, saveLabel = "Save cate
 export const buildSavedCategoryEditor = () => {
   const currentWorkspace = () => (window.gZenWorkspaces ? window : Services.wm.getMostRecentWindow("navigator:browser"))?.gZenWorkspaces?.activeWorkspace;
   const root = h("section", { class: "zao-jev-category-settings" });
-  root.appendChild(h("h3", { text: "Jev categories for this workspace" }));
+  root.appendChild(h("h3", { text: "Categories for this workspace" }));
   root.appendChild(h("p", { text: "Save category meanings for fast cleanup. Empty categories are suggested automatically on the next sort unless you choose Define my own." }));
   const feedback = h("p"); feedback.setAttribute("role", "status");
   const editorHost = h("div"); root.appendChild(editorHost);
@@ -86,7 +86,7 @@ export const previewCategories = (categories, signal) => new Promise((resolve) =
   };
   const abort = () => finish(null);
   modal.appendChild(h("h3", { text: "Categories for this sort" }));
-  modal.appendChild(h("p", { text: "Rename, merge, or adjust the descriptions before Jev assigns tabs." }));
+  modal.appendChild(h("p", { text: "Rename, merge, or adjust the descriptions before the decision model assigns tabs." }));
   modal.appendChild(buildCategoryEditor(categories, { saveLabel: "Sort now", onSave: finish }));
   modal.appendChild(button("Cancel", () => finish(null)));
   modal.addEventListener("cancel", (event) => { event.preventDefault(); finish(null); });

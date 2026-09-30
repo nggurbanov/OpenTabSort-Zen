@@ -123,7 +123,7 @@
         "value": "custom"
       },
       {
-        "label": "Jev — Quick sorting with meaningful categories",
+        "label": "Decision models — Jev and compatible APIs",
         "value": "jev"
       }
     ]
@@ -241,17 +241,23 @@
   },
   {
     "type": "separator",
-    "label": "Jev Quick Sort"
+    "label": "Decision Quick Sort"
   },
   {
     "type": "string",
-    "label": "Jev API key",
+    "label": "Decision API endpoint — full System One-compatible URL (OpenRouter: https://openrouter.ai/api/v1/systemone)",
+    "property": "extensions.zen-auto-organize.ai-jev-endpoint",
+    "defaultValue": "https://api.typesafe.ai/v1/systemone"
+  },
+  {
+    "type": "string",
+    "label": "Decision provider API key",
     "property": "extensions.zen-auto-organize.ai-jev-api-key",
     "defaultValue": ""
   },
   {
     "type": "string",
-    "label": "Jev model",
+    "label": "Decision model ID — any model supported by your endpoint",
     "property": "extensions.zen-auto-organize.ai-jev-model",
     "defaultValue": "jev-latest"
   },
