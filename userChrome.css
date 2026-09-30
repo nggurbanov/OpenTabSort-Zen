@@ -1350,3 +1350,71 @@ dialog.zao-warning-dialog::backdrop {
 @keyframes zao-spin {
   to { transform: rotate(360deg); }
 }
+/* Jev live progress and editable category meanings. */
+.zao-jev-progress {
+  box-sizing: border-box;
+  position: fixed;
+  inset-inline-start: 16px;
+  bottom: 24px;
+  z-index: 2147483646;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 290px;
+  max-width: calc(100vw - 40px);
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 14px;
+  background: var(--toolbar-bgcolor, Canvas);
+  color: var(--toolbar-color, CanvasText);
+  box-shadow: 0 8px 28px #0003;
+  font: menu;
+}
+.zao-jev-progress span, .zao-jev-progress progress { width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.zao-jev-progress progress { accent-color: var(--zen-primary-color, #77a1e6); height: 5px; }
+.zao-jev-progress [hidden] { display: none !important; }
+.zao-jev-progress button, .zao-category-editor button, .zao-jev-preview > button {
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  color: inherit;
+  padding: 6px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.zao-jev-progress button:hover, .zao-category-editor button:hover { background: color-mix(in srgb, currentColor 13%, transparent); }
+.zao-category-editor { display: flex; flex-direction: column; gap: 10px; }
+.zao-category-list { display: flex; flex-direction: column; gap: 12px; }
+.zao-category-row { display: flex; flex-direction: column; gap: 7px; padding: 12px; border: 1px solid color-mix(in srgb, currentColor 15%, transparent); border-radius: 10px; }
+.zao-category-row input, .zao-category-row textarea, .zao-category-row select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 6px;
+  background: Field;
+  color: FieldText;
+  font: inherit;
+}
+.zao-category-row textarea { resize: vertical; }
+.zao-category-controls { display: flex; align-items: center; gap: 8px; }
+.zao-category-controls select { flex: 1; }
+.zao-category-error { color: light-dark(#a82020, #ffaaaa); margin: 0; }
+.zao-category-error:empty { display: none; }
+.zao-jev-category-settings { padding: 12px 0; }
+.zao-jev-preview {
+  box-sizing: border-box;
+  width: min(640px, 90vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 24px;
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 16px;
+  background: Canvas;
+  color: CanvasText;
+  font: menu;
+}
+.zao-jev-preview::backdrop { background: #0006; }
+.zao-jev-preview > button { margin-top: 12px; }

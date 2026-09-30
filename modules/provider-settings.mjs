@@ -1,7 +1,7 @@
 import { CONFIG } from "./config.mjs";
 
-export const readProviderSettings = (prefs) => {
-  const provider = readString(prefs, CONFIG.AI_ENGINE_PREF, "off") || "off";
+export const readProviderSettings = (prefs, selectedProvider) => {
+  const provider = selectedProvider || readString(prefs, CONFIG.AI_ENGINE_PREF, "off") || "off";
   if (provider === "local") return { provider, consentToSendData: false };
   if (provider === "ollama") {
     return {
@@ -12,6 +12,12 @@ export const readProviderSettings = (prefs) => {
     };
   }
   const consentToSendData = readBool(prefs, CONFIG.AI_PROVIDER_CONSENT_PREF, false);
+  if (provider === "jev") {
+    return { provider, consentToSendData,
+      apiKey: readString(prefs, CONFIG.AI_JEV_API_KEY_PREF, ""),
+      model: readString(prefs, CONFIG.AI_JEV_MODEL_PREF, "jev-latest"),
+    };
+  }
   if (provider === "openai") {
     return {
       provider,

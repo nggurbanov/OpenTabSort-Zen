@@ -1,6 +1,6 @@
 {
   "name": "opentabsort-zen",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "type": "module",
   "description": "OpenTabSort Zen Sine mod validation and provider safety harness.",
@@ -12,7 +12,8 @@
     "validate:security": "node scripts/validate-security.mjs",
     "compare": "node scripts/compare-neurosort-advantages.mjs",
     "e2e:zen": "node scripts/e2e-zen.mjs",
-    "check": "npm run validate && npm test && npm run compare"
+    "check": "npm run validate && npm test && npm run compare",
+    "e2e:jev": "node scripts/e2e-jev.mjs"
   },
   "engines": {
     "node": ">=20"

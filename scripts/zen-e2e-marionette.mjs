@@ -59,7 +59,8 @@ export class MarionetteClient {
     const packet = await this.readPacket();
     const error = packet[2];
     if (error) throw new Error(`${name}: ${error.message || JSON.stringify(error)}`);
-    return packet[3]?.value;
+    const result = packet[3];
+    return result && Object.hasOwn(result, "value") ? result.value : result;
   }
 
   close() {
@@ -94,16 +95,24 @@ export class MarionetteClient {
 
   readSocketChunk() {
     return new Promise((resolveChunk, reject) => {
-      const onData = (data) => {
+      const cleanup = () => {
+        this.socket.off("data", onData);
         this.socket.off("error", onError);
+        this.socket.off("close", onClose);
+      };
+      const onData = (data) => {
+        cleanup();
         resolveChunk(data);
       };
       const onError = (error) => {
-        this.socket.off("data", onData);
+        cleanup();
         reject(error);
       };
+      const onClose = () => onError(new Error("Marionette connection closed"));
+      if (this.socket.destroyed) { reject(new Error("Marionette connection closed")); return; }
       this.socket.once("data", onData);
       this.socket.once("error", onError);
+      this.socket.once("close", onClose);
     });
   }
 }

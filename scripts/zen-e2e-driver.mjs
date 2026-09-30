@@ -75,7 +75,7 @@ export const driveZenScenario = async (marionette, scenario) => {
 
 export const delay = (ms) => new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 
-const waitForZenReady = async (marionette) => waitUntil(async () => {
+export const waitForZenReady = async (marionette) => waitUntil(async () => {
   const state = await marionette.execute(`
     const win = Services.wm.getMostRecentWindow("navigator:browser");
     return {
@@ -90,7 +90,7 @@ const waitForZenReady = async (marionette) => waitUntil(async () => {
   return { done: state.hasSineAPI && state.hasButton && state.hasCommand && state.hasListener && state.hasHarness && state.hasBrowser, state };
 }, "Zen did not load Sine/OpenTabSort");
 
-const prepareTabs = async (marionette, scenario) => {
+export const prepareTabs = async (marionette, scenario) => {
   await marionette.execute(`
     const win = Services.wm.getMostRecentWindow("navigator:browser");
     const principal = Services.scriptSecurityManager.getSystemPrincipal();
@@ -112,7 +112,7 @@ const prepareTabs = async (marionette, scenario) => {
   `);
 };
 
-const waitForWorkspaceUrls = async (marionette, expectedTabs) => waitUntil(async () => {
+export const waitForWorkspaceUrls = async (marionette, expectedTabs) => waitUntil(async () => {
   const state = await marionette.execute(`
     const win = Services.wm.getMostRecentWindow("navigator:browser");
     const workspaceId = win.gZenWorkspaces.activeWorkspace;

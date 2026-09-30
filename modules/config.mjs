@@ -13,7 +13,7 @@
 export const LOG = "[OpenTabSort]";
 
 // +tag.N suffix (dev builds only) flags a stale module-cache load in the Browser Console.
-export const BUILD_VERSION = "1.3.0";
+export const BUILD_VERSION = "1.4.0";
 
 export const CONFIG = {
   MAX_INIT_CHECKS: 50,
@@ -44,7 +44,7 @@ export const CONFIG = {
   MATCH_MODE_PREF: "extensions.zen-auto-organize.match-mode",
   GRADIENT_STYLE_PREF: "extensions.zen-auto-organize.gradient-style",
 
-  // AI_ENGINE_PREF: off/local/ollama/openai/gemini/custom; remote engines require consent.
+  // AI_ENGINE_PREF: off/local/ollama/openai/gemini/custom/jev; remote engines require consent.
   AI_ENGINE_PREF: "extensions.zen-auto-organize.ai-engine",
   AI_SORT_MODE_PREF: "extensions.zen-auto-organize.ai-sort-mode",
   AI_PROVIDER_CONSENT_PREF: "extensions.zen-auto-organize.ai-provider-consent",
@@ -57,6 +57,13 @@ export const CONFIG = {
   AI_CUSTOM_API_KEY_PREF: "extensions.zen-auto-organize.ai-custom-api-key",
   AI_CUSTOM_MODEL_PREF: "extensions.zen-auto-organize.ai-custom-model",
   AI_CUSTOM_FORMAT_PREF: "extensions.zen-auto-organize.ai-custom-format",
+  AI_JEV_API_KEY_PREF: "extensions.zen-auto-organize.ai-jev-api-key",
+  AI_JEV_MODEL_PREF: "extensions.zen-auto-organize.ai-jev-model",
+  AI_JEV_CATEGORY_PROVIDER_PREF: "extensions.zen-auto-organize.ai-jev-category-provider",
+  AI_JEV_CATEGORY_SOURCE_PREF: "extensions.zen-auto-organize.ai-jev-category-source",
+  AI_JEV_CATEGORIES_PREF: "extensions.zen-auto-organize.ai-jev-categories-json",
+  AI_JEV_PREVIEW_PREF: "extensions.zen-auto-organize.ai-jev-preview",
+  AI_JEV_CONFIDENCE_PREF: "extensions.zen-auto-organize.ai-jev-confidence",
   AI_TITLE_LEARNING_PREF: "extensions.zen-auto-organize.ai-title-learning",
   AI_EXISTING_BEHAVIOR_PREF: "extensions.zen-auto-organize.ai-existing-behavior",
   AI_NEW_GROUP_BEHAVIOR_PREF: "extensions.zen-auto-organize.ai-new-group-behavior",

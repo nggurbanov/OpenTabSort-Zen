@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0 — 2026-09-30
+
+- Added the Jev engine: an optional LLM suggests up to 10 described categories, then Jev classifies up to 30 tabs per request within a conservative context budget and applies each completed batch live.
+- Automatic sorting is the default; category preview is optional and off. Preview supports editing, merging, removal, and cancellation before classification.
+- Save category meanings per workspace; reuse them, refresh them every run, or define them manually. Oversized suggestion inputs are summarized and merged in bounded rounds.
+- Added live progress, brief tab highlights respecting reduced motion, Stop, and session Undo. Undo restores native group membership, order, appearance, and collapse state without overwriting later layout edits.
+- Keep uncertain, unknown, failed, and invalid decisions in their original groups; stop stale batches after workspace, tab, rule, or provider-setting changes. Preserve completed batches after cancellation or failure.
+- Jev uses title, hostname/path, and current-group metadata without fetching pages; strip URL credentials, query strings, and fragments. Reuse existing provider configuration for category generation and keep credentials out of diagnostics and backups.
+- Verified a 300-tab native Zen run, category reuse, Stop/Undo, request failure, manual-edit protection, and optional preview with deterministic HTTP providers. Live Jev classification quality has not been benchmarked.
+
 ## 1.3.0 — 2026-09-30
 
 ### Upstream refresh

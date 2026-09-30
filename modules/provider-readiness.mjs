@@ -1,4 +1,4 @@
-export const PROVIDER_NAMES = ["off", "local", "ollama", "openai", "gemini", "custom"];
+export const PROVIDER_NAMES = ["off", "local", "ollama", "openai", "gemini", "custom", "jev"];
 
 export const getProviderReadiness = (settings) => {
   if (settings.provider === "off" || settings.provider === "local") {
@@ -26,6 +26,8 @@ const getMissingRequiredFields = (settings) => {
     case "openai":
       return missingStringFields({ endpoint: settings.endpoint, apiKey: settings.apiKey, model: settings.model });
     case "gemini":
+      return missingStringFields({ apiKey: settings.apiKey, model: settings.model });
+    case "jev":
       return missingStringFields({ apiKey: settings.apiKey, model: settings.model });
     case "custom":
       return missingStringFields({

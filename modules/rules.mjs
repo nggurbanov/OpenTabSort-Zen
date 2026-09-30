@@ -311,7 +311,7 @@ export const getGradientStyle = () => {
 export const getAIEngine = () => {
   try {
     const engine = Services.prefs.getStringPref(CONFIG.AI_ENGINE_PREF, "");
-    if (["local", "ollama", "openai", "gemini", "custom"].includes(engine)) return engine;
+    if (["local", "ollama", "openai", "gemini", "custom", "jev"].includes(engine)) return engine;
     return "off";
   } catch {
     return "off";
