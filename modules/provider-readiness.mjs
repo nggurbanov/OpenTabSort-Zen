@@ -28,7 +28,7 @@ const getMissingRequiredFields = (settings) => {
     case "gemini":
       return missingStringFields({ apiKey: settings.apiKey, model: settings.model });
     case "jev":
-      return missingStringFields({ apiKey: settings.apiKey, model: settings.model });
+      return missingStringFields({ endpoint: settings.endpoint, apiKey: settings.apiKey, model: settings.model });
     case "custom":
       return missingStringFields({
         endpoint: settings.endpoint,

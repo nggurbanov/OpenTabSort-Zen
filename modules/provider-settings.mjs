@@ -14,6 +14,7 @@ export const readProviderSettings = (prefs, selectedProvider) => {
   const consentToSendData = readBool(prefs, CONFIG.AI_PROVIDER_CONSENT_PREF, false);
   if (provider === "jev") {
     return { provider, consentToSendData,
+      endpoint: readString(prefs, CONFIG.AI_JEV_ENDPOINT_PREF, CONFIG.AI_JEV_ENDPOINT_DEFAULT),
       apiKey: readString(prefs, CONFIG.AI_JEV_API_KEY_PREF, ""),
       model: readString(prefs, CONFIG.AI_JEV_MODEL_PREF, "jev-latest"),
     };

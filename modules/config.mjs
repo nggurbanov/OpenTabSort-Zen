@@ -13,7 +13,7 @@
 export const LOG = "[OpenTabSort]";
 
 // +tag.N suffix (dev builds only) flags a stale module-cache load in the Browser Console.
-export const BUILD_VERSION = "1.4.0";
+export const BUILD_VERSION = "1.4.1";
 
 export const CONFIG = {
   MAX_INIT_CHECKS: 50,
@@ -57,6 +57,8 @@ export const CONFIG = {
   AI_CUSTOM_API_KEY_PREF: "extensions.zen-auto-organize.ai-custom-api-key",
   AI_CUSTOM_MODEL_PREF: "extensions.zen-auto-organize.ai-custom-model",
   AI_CUSTOM_FORMAT_PREF: "extensions.zen-auto-organize.ai-custom-format",
+  AI_JEV_ENDPOINT_PREF: "extensions.zen-auto-organize.ai-jev-endpoint",
+  AI_JEV_ENDPOINT_DEFAULT: "https://api.typesafe.ai/v1/systemone",
   AI_JEV_API_KEY_PREF: "extensions.zen-auto-organize.ai-jev-api-key",
   AI_JEV_MODEL_PREF: "extensions.zen-auto-organize.ai-jev-model",
   AI_JEV_CATEGORY_PROVIDER_PREF: "extensions.zen-auto-organize.ai-jev-category-provider",

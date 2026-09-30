@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.1 — 2026-09-30
+
+- Added an editable full decision API endpoint alongside the unrestricted model ID and provider key; existing TypeSafe settings remain valid.
+- Renamed the UI engine to Decision models and documented Jev through OpenRouter and other System One-compatible providers.
+- Reject invalid endpoint URLs before requests and disable redirects; endpoint changes invalidate in-flight sorting results.
+
 ## 1.4.0 — 2026-09-30
 
 - Added the Jev engine: an optional LLM suggests up to 10 described categories, then Jev classifies up to 30 tabs per request within a conservative context budget and applies each completed batch live.

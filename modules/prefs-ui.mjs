@@ -73,7 +73,7 @@ const SECTION_DESCRIPTIONS = [
   ],
   [
     "AI Sorting",
-    "Choose a local or remote AI engine. Jev organizes tabs live using saved category meanings, with an optional LLM pass to suggest new categories.",
+    "Choose a local or remote AI engine. Decision models organize tabs live using saved category meanings, with an optional LLM pass to suggest new categories.",
   ],
 ];
 
@@ -147,7 +147,7 @@ const CONTROL_ROW_PREFS = [
   CONFIG.AI_OPENAI_ENDPOINT_PREF, CONFIG.AI_OPENAI_API_KEY_PREF, CONFIG.AI_OPENAI_MODEL_PREF,
   CONFIG.AI_GEMINI_API_KEY_PREF, CONFIG.AI_GEMINI_MODEL_PREF,
   CONFIG.AI_CUSTOM_ENDPOINT_PREF, CONFIG.AI_CUSTOM_API_KEY_PREF, CONFIG.AI_CUSTOM_MODEL_PREF, CONFIG.AI_CUSTOM_FORMAT_PREF,
-  CONFIG.AI_JEV_API_KEY_PREF, CONFIG.AI_JEV_MODEL_PREF, CONFIG.AI_JEV_CATEGORY_PROVIDER_PREF,
+  CONFIG.AI_JEV_ENDPOINT_PREF, CONFIG.AI_JEV_API_KEY_PREF, CONFIG.AI_JEV_MODEL_PREF, CONFIG.AI_JEV_CATEGORY_PROVIDER_PREF,
   CONFIG.AI_JEV_CATEGORY_SOURCE_PREF, CONFIG.AI_JEV_PREVIEW_PREF, CONFIG.AI_JEV_CONFIDENCE_PREF,
 ];
 
@@ -194,7 +194,7 @@ const DROPDOWN_CONFIGS = {
       ["openai", "OpenAI-compatible — Remote or self-hosted"],
       ["gemini", "Gemini — Google AI Studio"],
       ["custom", "Custom — OpenAI or Ollama-compatible endpoint"],
-      ["jev", "Jev — Quick sorting with meaningful categories"],
+      ["jev", "Decision models — Jev and compatible APIs"],
     ],
   },
   [CONFIG.AI_SORT_MODE_PREF]: {
@@ -571,10 +571,10 @@ const updateConditionalFields = (dialog) => {
   setHidden(rows.localBatchSize, engine !== "local");
   setHidden(findPrefRow(dialog, CONFIG.AI_SORT_MODE_PREF), !aiEnabled || jev);
   setHidden(findPrefRow(dialog, CONFIG.AI_PROVIDER_CONSENT_PREF), !remote && !jev);
-  for (const field of [CONFIG.AI_JEV_API_KEY_PREF, CONFIG.AI_JEV_MODEL_PREF, CONFIG.AI_JEV_CATEGORY_PROVIDER_PREF,
+  for (const field of [CONFIG.AI_JEV_ENDPOINT_PREF, CONFIG.AI_JEV_API_KEY_PREF, CONFIG.AI_JEV_MODEL_PREF, CONFIG.AI_JEV_CATEGORY_PROVIDER_PREF,
     CONFIG.AI_JEV_CATEGORY_SOURCE_PREF, CONFIG.AI_JEV_PREVIEW_PREF, CONFIG.AI_JEV_CONFIDENCE_PREF]) setHidden(findPrefRow(dialog, field), !jev);
   setHidden(dialog.querySelector(".zao-jev-category-settings"), !jev);
-  setHidden(findSeparatorContainer(dialog, "Jev Quick Sort"), !jev);
+  setHidden(findSeparatorContainer(dialog, "Decision Quick Sort"), !jev);
   for (const [provider, fields] of Object.entries({
     openai: [CONFIG.AI_OPENAI_ENDPOINT_PREF, CONFIG.AI_OPENAI_API_KEY_PREF, CONFIG.AI_OPENAI_MODEL_PREF],
     gemini: [CONFIG.AI_GEMINI_API_KEY_PREF, CONFIG.AI_GEMINI_MODEL_PREF],
@@ -815,7 +815,7 @@ const performInject = (dialog) => {
   insertAfter(content, skipEditor, findSeparatorContainer(dialog, "Skip Domains"));
   insertAfter(content, customIconsEditor, findSeparatorContainer(dialog, "Look & Feel"));
   insertAfter(content, backupSection, findSeparatorContainer(dialog, "Backup & Restore"));
-  insertAfter(content, buildSavedCategoryEditor(), findSeparatorContainer(dialog, "Jev Quick Sort"));
+  insertAfter(content, buildSavedCategoryEditor(), findSeparatorContainer(dialog, "Decision Quick Sort"));
 
   tagSeparatorContainers(dialog);
   injectSectionDescriptions(dialog);

@@ -21,6 +21,7 @@ const server = createServer(async (request, response) => {
     const body = JSON.parse(Buffer.concat(chunks).toString());
     let output;
     if (request.url.includes("systemone")) {
+      assert.equal(body.model, "custom/decision-model");
       calls.push(body.state.tabs.length);
       output = { answers: Object.fromEntries(body.state.tabs.map((tab) => {
         const index = GOLD_FAMILIES.findIndex((family) => tab.path.includes(`${family.toLowerCase()}.localhost`));
@@ -46,6 +47,8 @@ try {
     ...scenarioPrefs({ scenario: "full-ai", providerPort: port, marionettePort }),
     ["extensions.zen-auto-organize.ai-engine", "jev"],
     ["extensions.zen-auto-organize.ai-jev-api-key", "local-fixture-key"],
+    ["extensions.zen-auto-organize.ai-jev-endpoint", `http://127.0.0.1:${port}/v1/systemone`],
+    ["extensions.zen-auto-organize.ai-jev-model", "custom/decision-model"],
     ["extensions.zen-auto-organize.ai-jev-category-provider", "custom"],
     ["extensions.zen-auto-organize.ai-jev-preview", false],
   ]);
@@ -59,7 +62,7 @@ try {
     const win = Services.wm.getMostRecentWindow("navigator:browser");
     win.__jevNativeFetch = win.fetch.bind(win); win.__jevRequests = 0;
     win.fetch = async (url, init) => {
-      if (String(url) !== "https://api.typesafe.ai/v1/systemone") return win.__jevNativeFetch(url, init);
+      if (String(url) !== "http://127.0.0.1:${port}/v1/systemone") return win.__jevNativeFetch(url, init);
       win.__jevRequests++;
       if (win.__jevMode === "stop" && win.__jevRequests === 2) {
         [...win.document.querySelectorAll(".zao-jev-progress button")].find((button) => button.textContent === "Stop").click();
@@ -69,7 +72,7 @@ try {
         win.gBrowser.ungroupTab(tab);
       }
       if (win.__jevMode === "auth" && win.__jevRequests === 2) return new win.Response("Unauthorized", { status: 401 });
-      return win.__jevNativeFetch("http://127.0.0.1:${port}/v1/systemone", init);
+      return win.__jevNativeFetch(url, init);
     };
     win.__jevState = () => [...win.gBrowser.tabs].filter((tab) => !tab.pinned).map((tab, position) => ({
       url: win.gBrowser.getBrowserForTab(tab)?.currentURI?.spec,

@@ -103,6 +103,7 @@ export const readJevSettings = (prefs) => {
   const provider = prefs.getStringPref(CONFIG.AI_JEV_CATEGORY_PROVIDER_PREF, "openai");
   const threshold = Number(prefs.getStringPref(CONFIG.AI_JEV_CONFIDENCE_PREF, "0.5"));
   return {
+    endpoint: prefs.getStringPref(CONFIG.AI_JEV_ENDPOINT_PREF, CONFIG.AI_JEV_ENDPOINT_DEFAULT).trim(),
     apiKey: prefs.getStringPref(CONFIG.AI_JEV_API_KEY_PREF, "").trim(),
     model: prefs.getStringPref(CONFIG.AI_JEV_MODEL_PREF, "jev-latest").trim(),
     consent: prefs.getBoolPref(CONFIG.AI_PROVIDER_CONSENT_PREF, false),

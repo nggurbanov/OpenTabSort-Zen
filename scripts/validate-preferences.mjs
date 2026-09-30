@@ -23,6 +23,7 @@ const REQUIRED_PROPERTIES = [
   "extensions.zen-auto-organize.ai-custom-model",
   "extensions.zen-auto-organize.ai-custom-endpoint",
   "extensions.zen-auto-organize.ai-custom-format",
+  "extensions.zen-auto-organize.ai-jev-endpoint",
   "extensions.zen-auto-organize.ai-jev-api-key",
   "extensions.zen-auto-organize.ai-jev-model",
   "extensions.zen-auto-organize.ai-jev-category-source",
