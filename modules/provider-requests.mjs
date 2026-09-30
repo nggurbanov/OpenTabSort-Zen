@@ -33,7 +33,7 @@ const openAiRequest = (endpoint, apiKey, model, prompt, maxTokens) => ({
   url: appendPath(endpoint, "/chat/completions"),
   init: {
     method: "POST",
-    headers: { "content-type": "application/json", [AUTH_HEADER_NAME]: `Bearer ${apiKey}` },
+    headers: { "content-type": "application/json", ...(apiKey?.trim() ? { [AUTH_HEADER_NAME]: `Bearer ${apiKey.trim()}` } : {}) },
     body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }], max_tokens: maxTokens, temperature: 0.2 }),
   },
 });

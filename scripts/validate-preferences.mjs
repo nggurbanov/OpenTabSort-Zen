@@ -77,7 +77,7 @@ export const validatePreferences = (rootDir = process.cwd()) => {
 
   const sortMode = findEntry(preferences, "extensions.zen-auto-organize.ai-sort-mode");
   const sortModeValues = optionValues(sortMode);
-  for (const value of ["rules-first", "hybrid", "full-ai"]) {
+  for (const value of ["rules-first", "full-ai"]) {
     if (!sortModeValues.includes(value)) errors.push(`AI sorting mode missing option ${value}`);
   }
 

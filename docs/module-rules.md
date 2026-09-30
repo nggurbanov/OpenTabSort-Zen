@@ -6,20 +6,26 @@ All read/write access to the rules pref + the file fallback. Cleans malformed in
 
 | Name | Returns | Notes |
 |---|---|---|
-| `readRulesPref()` | `Rule[] \| null` | Reads the JSON pref, validates each entry, drops rules with empty `name` or no usable `domains`. Returns `null` if the pref is unset or unparseable. |
+| `readRulesPref()` | `Rule[] \| null` | Reads the JSON pref, validates each entry, drops rules with empty `name` or no usable `domains`/`titleTerms`. Returns `null` if the pref is unset or unparseable. |
+| `sanitizeRules(rules, opts?)` | `Rule[]` | Shared rule cleaner used by pref reads, `rules.json` validation, and Backup & Restore import. Trims strings, drops invalid colors, clamps icons, and drops incomplete rules unless `keepIncomplete` is true. |
 | `writeRulesPref(rules)` | void | Serializes and stores. |
 | `validateRules(data)` | `Rule[]` | For rules.json file content — throws on bad input. |
 | `loadRules()` | async `Rule[]` | Precedence: pref → rules.json file → `DEFAULT_RULES`. |
 | `isMinimalStyle()` | bool | Reads the `minimal-style` pref. |
-| `isStrictRulesEnforced()` | bool | Reads the `strict-rules` pref (default false). When on, click-handler ejects tabs whose hostname isn't listed in their group's rule. |
+| `isStrictRulesEnforced()` | bool | Reads the `strict-rules` pref (default false). When on, click-handler ejects tabs that do not match their current group under the active match mode. |
+| `getMatchMode()` | `"url-only" \| "title-only" \| "url-then-title" \| "title-then-url"` | Reads the global URL/title matching priority. Unknown values fall back to `"url-then-title"`. |
+| `getGradientStyle()` | string | Reads the global two-color gradient style. Unknown values fall back to `"left-right"`. |
 | `readSkipDomainsPref()` | `string[]` | Reads the JSON skip-domains pref. Returns `[]` if unset. |
 | `writeSkipDomainsPref(domains)` | void | Serializes and stores the skip-domains list. |
 | `getAIEngine()` | `"off" \| "local" \| "ollama"` | Normalized read of the engine pref (unknown / empty → `"off"`). |
+| `getAITitleLearning()` | `"off" \| "review-save-simple" \| "review-save-complex"` | Ollama-only title-term learning mode. Legacy `"review-save"` normalizes to simple. Defaults to `"off"`. |
 | `getOllamaHost()` | string | Ollama base URL, falls back to default. |
 | `getOllamaModel()` | string | Ollama model name, falls back to default. |
 | `isOllamaWarmupEnabled()` | bool | Whether to preload + keep the model warm. |
 | `getAIExistingBehavior()` | `"always-add" \| "transient"` | What to do when AI moves a tab into an existing rule-matched group. |
 | `getAINewGroupBehavior()` | string | One of: `"auto-add"`, `"transient"`, `"prompt"`, `"fresh-categories"`, `"identify-only"`. |
+| `isLocalAIAcknowledged()` | bool | Whether the user has dismissed the Local engine's resource-cost warning modal. Used as a consent gate by Ollama's post-collision name-dedupe check (`modules/ollama.mjs`) before it's allowed to load the Local embedding engine for a one-off similarity check. |
+| `getOrderedMatches(rule)` | `{type: "domain"\|"title", value: string}[]` | Rules-editor "Matches" pill rendering order — honors the rule's optional `matchOrder` (see below), falling straight through to today's default order (domains then titleTerms) when absent. |
 
 ## Rule shape
 
@@ -27,11 +33,22 @@ All read/write access to the rules pref + the file fallback. Cleans malformed in
 {
   name: "Calendar",
   domains: ["calendar.google.com", "connect.garmin.com"],
-  color: "blue"  // optional — Zen palette name OR hex like "#abc"
+  titleTerms: ["schedule"], // optional — case-insensitive substring matches
+  color: "blue",   // optional — Zen palette name OR hex like "#abc"
+  color2: "#8cf",  // optional — second color for a gradient
+  icon: "📅",      // optional — plain-text icon or custom:<id>
+  matchOrder: [    // optional — free interleave display order for the
+    { type: "title", value: "schedule" },           // "Matches" pills in
+    { type: "domain", value: "calendar.google.com" }, // the settings editor
+  ],
 }
 ```
 
-`readRulesPref` is permissive on `color`: accepts both a Zen palette name and a hex value. Anything else gets dropped.
+`domains` and `titleTerms` are both optional at the JSON boundary, but a runnable rule needs a name plus at least one domain or title term. `sanitizeRules` is permissive on `color` and `color2`: accepts both a Zen palette name and a hex value. Anything else gets dropped. Plain emoji/text icons are capped to 12 characters; custom icon references are capped to 128 characters.
+
+`matchOrder` is additive and lazily created — it exists ONLY on a rule where the user has dragged a pill to reorder it at least once (set unconditionally by `widget.mjs`'s pill-drop handler; pill add/remove only *sync* an already-existing `matchOrder`, never create one). It is display metadata only: `domains`/`titleTerms` remain the untouched source of truth for match-testing (`pass1.mjs`), rule-growing (`browser-hooks.mjs`, `ai.mjs`, `ollama.mjs`), and prompt-building (`ollama-prompts.mjs`) — none of those call sites know or care that `matchOrder` exists. `cleanRule` validates it (drops entries referencing a value no longer in `domains`/`titleTerms`, drops duplicates) but never throws on malformed input, unlike `domains`/`titleTerms` which stay functionally required. See [module-widget.md](module-widget.md) for the drag mechanics.
+
+The built-in defaults intentionally stay small and only seed fresh installs or fallback loads: Calendar, AI Tools, Dev, Shopping, Social, Music, and Search. Once a user has a rules pref, default changes do not overwrite it.
 
 ## Why the pref is a JSON string, not a struct
 
@@ -40,3 +57,7 @@ Sine's preference system only supports single-line `string`/`checkbox`/`dropdown
 ## Pref change → UI refresh
 
 External writes — from the tab right-click "Add to Rule…" submenu (browser-hooks.mjs), the Backup & Restore import (widget.mjs), or AI Pass 2 (ai.mjs / ollama.mjs) — trigger `nsPref:changed`. The settings widget registers an `nsIPrefBranch.addObserver` and refreshes the visible table on every change.
+
+## Fork integration (1.3.0)
+
+`getAIEngine` accepts off/local/ollama/openai/gemini/custom. `getAISortMode` accepts rules-first/full-ai and the legacy hybrid alias. An explicitly saved empty array stays empty; `loadRules` retains sanitized editor drafts, so consumers filter runnable rows. `persistAIRules` merges additions into current rich records while retaining incomplete drafts. The click handler rejects changed rules before applying an asynchronous plan.

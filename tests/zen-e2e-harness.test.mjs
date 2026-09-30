@@ -89,6 +89,7 @@ test("Given Zen E2E profile prefs When prepared Then Marionette uses the reserve
   const prefs = scenarioPrefs({ scenario: "full-ai", providerPort: 1234, marionettePort: 4545 });
 
   assert.deepEqual(prefs.find(([name]) => name === "marionette.port"), ["marionette.port", 4545]);
+  assert.deepEqual(prefs.find(([name]) => name === "zen.welcome-screen.seen"), ["zen.welcome-screen.seen", true]);
 });
 
 test("Given invalid Zen E2E args When parsed Then the operator gets a bounded error", () => {

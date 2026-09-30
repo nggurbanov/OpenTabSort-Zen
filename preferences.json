@@ -3,17 +3,14 @@
     "type": "separator",
     "label": "Group Rules"
   },
-
   {
     "type": "separator",
     "label": "Skip Domains"
   },
-
   {
     "type": "separator",
     "label": "Backup & Restore"
   },
-
   {
     "type": "separator",
     "label": "Look & Feel"
@@ -30,7 +27,66 @@
     "property": "extensions.zen-auto-organize.strict-rules",
     "defaultValue": false
   },
-
+  {
+    "type": "dropdown",
+    "label": "Rule matching priority — choose whether URL/domain matches or title matches are checked first",
+    "property": "extensions.zen-auto-organize.match-mode",
+    "defaultValue": "url-then-title",
+    "options": [
+      {
+        "label": "URL only",
+        "value": "url-only"
+      },
+      {
+        "label": "Title only",
+        "value": "title-only"
+      },
+      {
+        "label": "URL then Title",
+        "value": "url-then-title"
+      },
+      {
+        "label": "Title then URL",
+        "value": "title-then-url"
+      }
+    ]
+  },
+  {
+    "type": "dropdown",
+    "label": "Gradient style — choose how two-color group gradients are drawn",
+    "property": "extensions.zen-auto-organize.gradient-style",
+    "defaultValue": "left-right",
+    "options": [
+      {
+        "label": "Left to right",
+        "value": "left-right"
+      },
+      {
+        "label": "Right to left",
+        "value": "right-left"
+      },
+      {
+        "label": "Top to bottom",
+        "value": "top-bottom"
+      },
+      {
+        "label": "Bottom to top",
+        "value": "bottom-top"
+      },
+      {
+        "label": "Diagonal down",
+        "value": "diagonal-down"
+      },
+      {
+        "label": "Diagonal up",
+        "value": "diagonal-up"
+      },
+      {
+        "label": "Radial",
+        "value": "radial"
+      }
+    ]
+  },
   {
     "type": "separator",
     "label": "AI Sorting"
@@ -39,12 +95,33 @@
     "type": "dropdown",
     "label": "AI engine",
     "property": "extensions.zen-auto-organize.ai-engine",
+    "defaultValue": "off",
+    "placeholder": false,
     "options": [
-      { "label": "Local — Built-in model, limited capability", "value": "local" },
-      { "label": "Ollama — Stronger model, requires Ollama running locally", "value": "ollama" },
-      { "label": "OpenAI-compatible — Remote or self-hosted /v1/chat/completions", "value": "openai" },
-      { "label": "Gemini — Google AI Studio generateContent", "value": "gemini" },
-      { "label": "Custom — OpenAI or Ollama-compatible endpoint", "value": "custom" }
+      {
+        "label": "None",
+        "value": "off"
+      },
+      {
+        "label": "Local — Built-in model, limited capability",
+        "value": "local"
+      },
+      {
+        "label": "Ollama — Stronger model, requires Ollama running locally",
+        "value": "ollama"
+      },
+      {
+        "label": "OpenAI-compatible — Remote or self-hosted /v1/chat/completions",
+        "value": "openai"
+      },
+      {
+        "label": "Gemini — Google AI Studio generateContent",
+        "value": "gemini"
+      },
+      {
+        "label": "Custom — OpenAI or Ollama-compatible endpoint",
+        "value": "custom"
+      }
     ]
   },
   {
@@ -59,32 +136,79 @@
     "property": "extensions.zen-auto-organize.ai-sort-mode",
     "defaultValue": "rules-first",
     "options": [
-      { "label": "Rules first — Use domain rules, then AI for leftovers", "value": "rules-first" },
-      { "label": "Hybrid — Fast rules first, then AI-sort unmatched tabs every run", "value": "hybrid" },
-      { "label": "Full AI — Ignore rules and re-cluster all eligible tabs", "value": "full-ai" }
+      {
+        "label": "Rules + AI — Match rules, then classify leftovers",
+        "value": "rules-first"
+      },
+      {
+        "label": "Full AI — Regroup all eligible tabs without saving rules",
+        "value": "full-ai"
+      }
     ]
   },
   {
     "type": "dropdown",
-    "label": "When AI assigns a tab to an existing group",
+    "label": "AI title learning — propose reviewed T chips from tab titles (simple) and/or page content (complex)",
+    "property": "extensions.zen-auto-organize.ai-title-learning",
+    "defaultValue": "off",
+    "placeholder": false,
+    "options": [
+      {
+        "label": "None",
+        "value": "off"
+      },
+      {
+        "label": "Review and Save (Simple)",
+        "value": "review-save-simple"
+      },
+      {
+        "label": "Review and Save (Complex)",
+        "value": "review-save-complex"
+      }
+    ]
+  },
+  {
+    "type": "dropdown",
+    "label": "Existing AI matches — choose whether matched tabs update saved rules",
     "property": "extensions.zen-auto-organize.ai-existing-behavior",
     "defaultValue": "always-add",
     "options": [
-      { "label": "Always-add — Append the tab's domain to the matched rule (rules grow)", "value": "always-add" },
-      { "label": "Transient — Move the tab only, rules untouched", "value": "transient" }
+      {
+        "label": "Move + Save Domain — Move the tab and add its domain to the matched rule",
+        "value": "always-add"
+      },
+      {
+        "label": "Move Once — Move the tab now; do not update saved rules",
+        "value": "transient"
+      }
     ]
   },
   {
     "type": "dropdown",
-    "label": "When AI creates a new group",
+    "label": "New AI groups — choose whether new groups become saved rules",
     "property": "extensions.zen-auto-organize.ai-new-group-behavior",
     "defaultValue": "auto-add",
     "options": [
-      { "label": "Auto-add — Create the group and save it as a new rule", "value": "auto-add" },
-      { "label": "Transient — Create the group only, no rule added", "value": "transient" },
-      { "label": "Prompt — Open Zen's edit modal to confirm name and color", "value": "prompt" },
-      { "label": "Fresh categories — Re-tidy ALL tabs into AI-invented groups, ignoring rules", "value": "fresh-categories" },
-      { "label": "Plan Mode — Preview the AI's plan, pick which groups to keep, optionally re-assign", "value": "identify-only" }
+      {
+        "label": "Preview + Save Rule — Review first; kept groups become saved rules",
+        "value": "auto-add"
+      },
+      {
+        "label": "Group Once — Create groups now; do not save rules",
+        "value": "transient"
+      },
+      {
+        "label": "Zen Edit Prompt — Create groups, then open Zen's rename/color dialog",
+        "value": "prompt"
+      },
+      {
+        "label": "Fresh Rebuild — Ignore current rules and regroup all tabs from scratch",
+        "value": "fresh-categories"
+      },
+      {
+        "label": "Preview Only — Review/re-assign first; apply groups without saving rules",
+        "value": "identify-only"
+      }
     ]
   },
   {
@@ -177,8 +301,14 @@
     "property": "extensions.zen-auto-organize.ai-custom-format",
     "defaultValue": "openai",
     "options": [
-      { "label": "OpenAI-compatible chat", "value": "openai" },
-      { "label": "Ollama generate", "value": "ollama" }
+      {
+        "label": "OpenAI-compatible chat",
+        "value": "openai"
+      },
+      {
+        "label": "Ollama generate",
+        "value": "ollama"
+      }
     ]
   }
 ]

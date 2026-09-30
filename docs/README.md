@@ -1,12 +1,15 @@
 # OpenTabSort Zen — Documentation
 
-OpenTabSort Zen is a Zen Browser Sine mod that auto-organizes tabs into groups using two passes:
+This fork includes upstream title rules, gradients, custom icons, and Local AI fixes, plus remote providers and Full AI mode. Start with the current [user guide](../README.md) and [changelog](../CHANGELOG.md).
 
-1. **Pass 1 — Deterministic domain rules**: a hostname-to-group map (e.g. `calendar.google.com → Calendar`) defined in the settings widget, matched first-match-wins.
+A Zen Browser Sine mod that auto-organizes tabs into groups using two passes:
+
+1. **Pass 1 — Deterministic rules**: a URL/title-to-group map (e.g. `calendar.google.com → Calendar`, or title contains `invoice → Work`) defined in the settings widget, matched first-match-wins within the selected match source.
 2. **Pass 2 — AI fallback** (shipped): unmatched tabs are sent to the selected engine:
-   - **Local** (`modules/ai.mjs`): Firefox's bundled `Mozilla/smart-tab-embedding` model. Existing-group classification only; no new-group invention.
-   - **Ollama** (`modules/ollama.mjs`): HTTP client to a local Ollama daemon at `localhost:11434`. Does both existing-group classification and AI-invented new-group clustering, with a merge pass and optional interactive Plan Mode.
-   - **Remote providers** (`modules/remote-provider.mjs`): OpenAI-compatible, Gemini, and custom endpoints. These require explicit provider config and data-sending consent before tab metadata is sent.
+   - **Local** (`modules/ai.mjs`): Firefox's bundled `Mozilla/smart-tab-embedding` model. Existing-group classification and new topic clustering.
+   - **Ollama** (`modules/ollama.mjs`): HTTP client to a local Ollama daemon at `localhost:11434`. Does both existing-group classification and AI-invented new-group clustering, with a merge pass and an optional interactive Preview Only modal for user review.
+
+- **Remote** (`modules/remote-provider.mjs`): OpenAI-compatible, Gemini, or custom endpoints, gated by consent and bounded validated batches.
 
 Rules grow via three explicit paths: the settings UI rule editor, the tab right-click "Add to Rule…" submenu (browser-hooks.mjs's `setupTabContextMenu`), and AI Pass 2 when it decides to grow rules.
 
@@ -17,13 +20,12 @@ Rules grow via three explicit paths: the settings UI rule editor, the tab right-
 | `auto-organize.uc.mjs` | Entry point. Branches on `window.location` to wire browser-context or preferences-context modules. |
 | `theme.json` | Sine mod manifest. Declares scripts, style, preferences. |
 | `preferences.json` | Sine settings schema — section headers and AI controls. The rules editor is injected as a custom widget from JS, not declared here. |
-| `userChrome.css` | Mod styling: pill table, color picker popover, toolbar wand button + wiggle animation, minimal-style override, preview-modal layout. |
+| `userChrome.css` | Mod styling: pill table, color/emoji popovers, toolbar wand button + wiggle animation, minimal-style override, preview-modal layout. |
 | `rules.json` | Legacy fallback rules used only if both the Sine pref and the built-in defaults somehow fail. |
 | `modules/*.mjs` | One module per concern. See per-file docs below. |
 | `modules/ai.mjs` | Pass 2 — local AI engine (Firefox's bundled ML, existing-group classification only). |
 | `modules/ollama.mjs` | Pass 2 — Ollama engine (full classification + clustering + merge pass + warmup). |
-| `modules/remote-provider.mjs` | Pass 2 — remote OpenAI-compatible, Gemini, and custom providers with consent gate. |
-| `modules/preview-modal.mjs` | Plan Mode interactive modal (group keep/skip, re-assign-to-planned, re-assign-to-new). |
+| `modules/preview-modal.mjs` | Preview modal used by Preview Only and rule-learning confirmation flows (group keep/skip, re-assign-to-planned, re-assign-to-new). |
 | `modules/ui-toast.mjs` | Shared toast/system-notification helper. |
 
 ## New to chrome scripting?
@@ -34,7 +36,7 @@ Read [chrome-globals.md](chrome-globals.md) first. It explains where `Services`,
 
 See [architecture.md](architecture.md) for the full picture; the short version:
 
-- **Settings widget** (about:preferences) lets the user define rules + colors.
+- **Settings widget** (about:preferences) lets the user define domain/title rules, colors/gradients, and icons.
 - **Tidy button** (browser.xhtml toolbar) triggers Pass 1, applies it, and runs cleanup passes.
 - **Tab right-click submenu** (browser.xhtml) lets the user explicitly add a tab's hostname to any rule or to the skip-domains list.
 
@@ -49,14 +51,15 @@ See [architecture.md](architecture.md) for the full picture; the short version:
 - [module-pass1.md](module-pass1.md) — domain matcher + apply
 - [module-ai.md](module-ai.md) — Pass 2 local AI engine (embedding-only, existing groups)
 - [module-ollama.md](module-ollama.md) — Pass 2 Ollama engine (transport + prompts + orchestrators)
-- `modules/remote-provider.mjs` — Pass 2 remote provider driver
 - [module-click-handler.md](module-click-handler.md) — tidy click orchestrator
 - [module-browser-ui.md](module-browser-ui.md) — wand button, command, workspace hooks
 - [module-browser-hooks.md](module-browser-hooks.md) — tab right-click "Add to Rule" submenu + TabGroupCreate color re-apply + minimal-style observer
 - [module-prefs-ui.md](module-prefs-ui.md) — Sine dialog detection, widget injection, conditional fields
 - [module-widget.md](module-widget.md) — rules editor table + Backup & Restore
 - [module-color-picker.md](module-color-picker.md) — color popover + palette fetch
+- [module-custom-icons.md](module-custom-icons.md) — local uploaded icon storage
+- [module-emoji-picker.md](module-emoji-picker.md) — local emoji/icon picker
 
 Modules without dedicated docs (small / self-explanatory — see source comments):
-- `modules/preview-modal.mjs` — Plan Mode interactive `<dialog>` (keep/skip groups, re-assign actions, applied/cancelled signal)
+- `modules/preview-modal.mjs` — preview `<dialog>` (keep/skip groups, re-assign actions, applied/cancelled signal)
 - `modules/ui-toast.mjs` — `showToast(message, options)` wrapper around `gZenUIManager.showToast` with an alerts-service fallback

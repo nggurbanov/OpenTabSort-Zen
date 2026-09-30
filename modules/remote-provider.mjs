@@ -9,19 +9,16 @@ import { buildProviderRequest, getProviderKind, parseProviderResponse } from "./
 import { readProviderSettings } from "./provider-settings.mjs";
 import { buildClassifyPrompt, buildClusterPrompt, buildUnifiedPrompt, buildFreshPrompt } from "./ollama-prompts.mjs";
 import { consolidateNewGroups } from "./new-group-consolidation.mjs";
-import { chunkTabsForProvider, PROVIDER_TAB_BATCH_SIZE } from "./provider-batching.mjs";
-import { collectProviderTabMap } from "./remote-assignment-retry.mjs";
+import { PROVIDER_TAB_BATCH_SIZE } from "./provider-batching.mjs";
+import { collectProviderTabMap, clusterAssignments, normalizeProviderLabel } from "./remote-assignment-retry.mjs";
 import { fetchPageSnippet } from "./tabs.mjs";
 import { showToast } from "./ui-toast.mjs";
+import { safeProviderErrorMessage } from "./safe-log.mjs";
 
 const GENERATE_TIMEOUT_MS = 120000;
 const PROVIDER_JSON_MAX_TOKENS = 4096;
 const PROVIDER_FRESH_JSON_MAX_TOKENS = 4096;
 const PROVIDER_FRESH_TAB_BATCH_SIZE = 35;
-
-const stripMetaPrefix = (s) => s
-  .replace(/^\s*(?:new\s+)?(?:category|label|topic|bucket|group)\s*[:\-–]\s*/i, "")
-  .trim();
 
 export const classifyExistingGroupsRemoteBatch = async (pendingTabs, rules, settings = readProviderSettings(Services.prefs)) => {
   if (!pendingTabs?.length || !rules?.length) return new Map();
@@ -34,19 +31,20 @@ export const classifyExistingGroupsRemoteBatch = async (pendingTabs, rules, sett
   }
 
   const namesByLower = new Map(rules.map((r) => r?.name).filter(Boolean).map((name) => [name.toLowerCase(), name]));
-  const out = new Map();
-
-  for (const chunk of chunkTabsForProvider(pendingTabs)) {
-    const parsed = await providerJson(readiness.value, buildClassifyPrompt(rules, chunk.tabs));
-    for (const [key, value] of Object.entries(parsed)) {
-      const chunkIdx = Number.parseInt(key, 10);
-      if (!Number.isFinite(chunkIdx) || chunkIdx < 0 || chunkIdx >= chunk.tabs.length) continue;
-      const raw = String(value || "").trim();
-      const canonical = namesByLower.get(raw.toLowerCase());
-      out.set(chunk.start + chunkIdx, canonical || null);
-    }
-  }
-  for (let i = 0; i < pendingTabs.length; i++) if (!out.has(i)) out.set(i, null);
+  const { parsedByIndex, missing, failures } = await collectProviderTabMap({
+    tabs: pendingTabs,
+    initialBatchSize: PROVIDER_TAB_BATCH_SIZE,
+    label: "remote provider classification",
+    buildPrompt: (tabs) => buildClassifyPrompt(rules, tabs),
+    fetchJson: (prompt) => providerJson(readiness.value, prompt),
+    validateLabel: (value) => {
+      const name = normalizeProviderLabel(value);
+      return name && (namesByLower.has(name.toLowerCase()) || /^(none|skipped)$/i.test(name)) ? name : null;
+    },
+  });
+  const out = new Map(pendingTabs.map((_, index) => [index, namesByLower.get(parsedByIndex.get(index)?.toLowerCase()) || null]));
+  out.unresolved = new Set(missing);
+  if (failures.length) out.failed = failures.join("; ");
   return out;
 };
 
@@ -66,7 +64,7 @@ export const runPass2Remote = async (unmatched, rules, settings = readProviderSe
 
     if (!rules.some((r) => r?.name)) {
       const grouped = await clusterUnmatchedNewGroups(unmatched, readiness.value);
-      return { assignedToExisting: [], newGroups: grouped.groups, skipped: grouped.skipped };
+      return { assignedToExisting: [], newGroups: grouped.groups, skipped: grouped.skipped, unresolved: grouped.unresolved, ...(grouped.failed ? { failed: grouped.failed } : {}) };
     }
 
     const { deduped, origToDeduped } = dedupeTabs(unmatched);
@@ -83,10 +81,15 @@ export const runPass2Remote = async (unmatched, rules, settings = readProviderSe
     const assignedToExisting = [];
     const newGroupsByKey = new Map();
     const skipped = [];
+    const unresolved = [];
 
     for (let i = 0; i < unmatched.length; i++) {
       const value = parsedByDedupedIndex.get(origToDeduped[i]);
-      const raw = stripMetaPrefix(value == null ? "" : String(value).trim());
+      if (!parsedByDedupedIndex.has(origToDeduped[i])) {
+        unresolved.push(unmatched[i]);
+        continue;
+      }
+      const raw = normalizeProviderLabel(value);
       const lower = raw.toLowerCase();
       if (!raw || lower === "skipped" || lower === "none") {
         skipped.push(unmatched[i]);
@@ -101,16 +104,17 @@ export const runPass2Remote = async (unmatched, rules, settings = readProviderSe
       newGroupsByKey.get(lower).tabs.push(unmatched[i]);
     }
 
-    const newGroups = await consolidateNewGroups([...newGroupsByKey.values()], (prompt) =>
+    const newGroups = failures.length ? [...newGroupsByKey.values()] : await consolidateNewGroups([...newGroupsByKey.values()], (prompt) =>
       providerJson(readiness.value, prompt), "Remote provider");
     if (failures.length > 0) {
-      showToast(`Remote provider retried incomplete batches; ${skipped.length} tab(s) still did not move.`);
+      showToast(`Remote provider could not classify ${unresolved.length} tab(s); their current grouping was kept.`);
     }
-    return { assignedToExisting, newGroups, skipped };
+    return { assignedToExisting, newGroups, skipped, unresolved, ...(failures.length ? { failed: failures.join("; ") } : {}) };
   } catch (e) {
-    console.error(`${LOG} remote provider classification failed:`, e);
-    showToast(`Remote provider classification failed: ${e.message || e}`);
-    return { ...empty, skipped: unmatched, failed: e.message || String(e) };
+    const message = safeProviderErrorMessage(e, [settings.apiKey]);
+    console.error(`${LOG} remote provider classification failed: ${message}`);
+    showToast(`Remote provider classification failed: ${message}`);
+    return { ...empty, unresolved: unmatched, failed: message };
   }
 };
 
@@ -137,10 +141,15 @@ export const runPass2RemoteFresh = async (allTabs, settings = readProviderSettin
     });
     const newGroupsByKey = new Map();
     const skipped = [];
+    const unresolved = [];
 
     for (let i = 0; i < allTabs.length; i++) {
       const value = parsedByDedupedIndex.get(origToDeduped[i]);
-      const raw = stripMetaPrefix(value == null ? "" : String(value).trim());
+      if (!parsedByDedupedIndex.has(origToDeduped[i])) {
+        unresolved.push(allTabs[i]);
+        continue;
+      }
+      const raw = normalizeProviderLabel(value);
       const lower = raw.toLowerCase();
       if (!raw || lower === "skipped" || lower === "none") {
         skipped.push(allTabs[i]);
@@ -151,52 +160,44 @@ export const runPass2RemoteFresh = async (allTabs, settings = readProviderSettin
     }
 
     if (failures.length > 0) {
-      showToast(`Remote provider skipped ${failures.length} full-AI batch(es). Try a stronger model if some tabs did not move.`);
+      showToast(`Remote provider could not classify ${unresolved.length} tab(s); their current grouping was kept.`);
     }
 
-    const newGroups = await consolidateNewGroups([...newGroupsByKey.values()], (prompt) =>
+    const newGroups = failures.length ? [...newGroupsByKey.values()] : await consolidateNewGroups([...newGroupsByKey.values()], (prompt) =>
       providerJson(readiness.value, prompt, PROVIDER_FRESH_JSON_MAX_TOKENS), "Remote provider");
 
     return {
       assignedToExisting: [],
       newGroups,
       skipped,
+      unresolved,
       ...(failures.length > 0 ? { failed: failures.join("; ") } : {}),
     };
   } catch (e) {
-    console.error(`${LOG} remote provider fresh classification failed:`, e);
-    showToast(`Remote provider fresh classification failed: ${e.message || e}`);
-    return { ...empty, skipped: allTabs, failed: e.message || String(e) };
+    const message = safeProviderErrorMessage(e, [settings.apiKey]);
+    console.error(`${LOG} remote provider fresh classification failed: ${message}`);
+    showToast(`Remote provider fresh classification failed: ${message}`);
+    return { ...empty, unresolved: allTabs, failed: message };
   }
 };
 
 const clusterUnmatchedNewGroups = async (leftover, settings) => {
-  const seen = new Set();
+  const { parsedByIndex, missing, failures } = await collectProviderTabMap({
+    tabs: leftover,
+    initialBatchSize: PROVIDER_TAB_BATCH_SIZE,
+    label: "remote provider clustering",
+    buildPrompt: (tabs) => buildClusterPrompt(tabs),
+    fetchJson: async (prompt, count) => clusterAssignments(await providerJson(settings, prompt), count),
+  });
   const groupsByLower = new Map();
-
-  for (const chunk of chunkTabsForProvider(leftover)) {
-    const parsed = await providerJson(settings, buildClusterPrompt(chunk.tabs));
-    const validIdx = (i) => Number.isFinite(i) && i >= 0 && i < chunk.tabs.length;
-
-    for (const group of Array.isArray(parsed?.groups) ? parsed.groups : []) {
-      const name = String(group?.name || "").trim();
-      if (!name) continue;
-      const key = name.toLowerCase();
-      if (!groupsByLower.has(key)) groupsByLower.set(key, { name, tabs: [] });
-
-      for (const chunkIdx of Array.isArray(group?.tabs) ? group.tabs.filter(validIdx) : []) {
-        const originalIdx = chunk.start + chunkIdx;
-        if (seen.has(originalIdx)) continue;
-        seen.add(originalIdx);
-        groupsByLower.get(key).tabs.push(leftover[originalIdx]);
-      }
-    }
+  const skipped = [];
+  for (const [index, name] of parsedByIndex) {
+    const key = name.toLowerCase();
+    if (key === "none" || key === "skipped") { skipped.push(leftover[index]); continue; }
+    if (!groupsByLower.has(key)) groupsByLower.set(key, { name, tabs: [] });
+    groupsByLower.get(key).tabs.push(leftover[index]);
   }
-
-  return {
-    groups: [...groupsByLower.values()].filter((group) => group.tabs.length > 0),
-    skipped: leftover.filter((_, idx) => !seen.has(idx)),
-  };
+  return { groups: [...groupsByLower.values()], skipped, unresolved: missing.map((index) => leftover[index]), failed: failures.join("; ") };
 };
 
 const providerJson = async (settings, prompt, maxTokens = PROVIDER_JSON_MAX_TOKENS) => {
@@ -205,7 +206,7 @@ const providerJson = async (settings, prompt, maxTokens = PROVIDER_JSON_MAX_TOKE
   try {
     parsed = JSON.parse(extractJsonObjectText(responseText));
   } catch {
-    throw new Error(`Provider returned non-JSON content: ${String(responseText).slice(0, 120)}`);
+    throw new Error("Provider returned non-JSON content");
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Provider returned non-object JSON");
@@ -224,27 +225,36 @@ const providerText = async (settings, prompt, maxTokens) => {
   const request = buildProviderRequest(settings, prompt, maxTokens);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GENERATE_TIMEOUT_MS);
-  let response;
   try {
-    response = await fetch(request.url, { ...request.init, signal: controller.signal });
-  } catch (e) {
-    throw new Error(e.name === "AbortError" ? `timeout after ${GENERATE_TIMEOUT_MS}ms` : (e.message || String(e)));
+    const response = await fetch(request.url, { ...request.init, signal: controller.signal });
+    if (!response.ok) {
+      const error = new Error(`HTTP ${response.status}`);
+      error.status = response.status;
+      error.terminal = response.status >= 400 && response.status < 500;
+      error.retryable = false;
+      // Cancel an unused error body; never include provider bodies in diagnostics.
+      try { await response.body?.cancel(); } catch {}
+      throw error;
+    }
+    const body = await response.text();
+    const text = parseProviderResponse(getProviderKind(settings), body);
+    if (typeof text !== "string" || !text.trim()) throw new Error("Provider response did not contain text");
+    return text.trim();
+  } catch (error) {
+    if (error.status || /^Provider response/.test(error.message)) throw error;
+    const safe = new Error(error.name === "AbortError" ? `Provider timeout after ${GENERATE_TIMEOUT_MS}ms` : "Provider network request failed");
+    safe.retryable = false;
+    throw safe;
   } finally {
     clearTimeout(timer);
   }
-
-  const body = await response.text();
-  if (!response.ok) throw new Error(`HTTP ${response.status}: ${body.slice(0, 200)}`);
-  const text = parseProviderResponse(getProviderKind(settings), body);
-  if (typeof text !== "string" || !text.trim()) throw new Error("Provider response did not contain text");
-  return text.trim();
 };
 
 const dedupeTabs = (tabs) => {
   const indexByKey = new Map();
   const deduped = [];
   const origToDeduped = tabs.map((tab) => {
-    const key = `${tab.hostname || ""}\x00${tab.title || ""}`;
+    const key = JSON.stringify([tab.url || "", tab.hostname || "", tab.title || ""]);
     if (indexByKey.has(key)) return indexByKey.get(key);
     const idx = deduped.length;
     indexByKey.set(key, idx);

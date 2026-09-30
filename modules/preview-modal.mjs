@@ -1,9 +1,9 @@
-// OpenTabSort Zen — Plan Mode preview modal (Phase 4d).
+// Zen Tab Wand — AI grouping preview modal.
 //
 // Interactive modal that lets the user review the AI's proposed groupings
-// before they're applied. Used both for explicit "Plan Mode" (identify-only)
-// and as a confirmation step in Auto-add / Always-add modes (so the user
-// can veto rule mutations before they hit the table).
+// before they're applied. Used both for Preview Only (identify-only) and as a
+// confirmation step in Preview + Save Rule / Move + Save Domain modes (so the user can
+// veto rule mutations before they hit the table).
 //
 // Features:
 //   - Toggle each proposed NEW group keep/skip (accent fill = kept).
@@ -21,17 +21,74 @@
 //   "new:<lowercase-name>"      for newGroups entries
 //   "existing:<lowercase-name>" for assignedToExisting target groups
 // This avoids collisions when the AI proposes a new group with the same name
-// as an existing rule (rare but possible in auto-add modes).
+// as an existing rule (rare but possible in Preview + Save Rule mode).
 
 import { LOG, h } from "./config.mjs";
 
 const newKey = (name) => `new:${name.toLowerCase()}`;
 const existingKey = (name) => `existing:${name.toLowerCase()}`;
+const titleKey = (name) => `title:${name.toLowerCase()}`;
+
+// Accept only tabs from the pending pool, using the live tab reference rather
+// than a provider-supplied id. Missing/invalid responses remain unresolved;
+// explicit model skips and user choices are tracked separately.
+export const sanitizePreviewReassignment = (pending, result, {
+  newGroups = false, allowedNames, reservedNames = [],
+} = {}) => {
+  const identity = (tab) => tab?._tab || tab;
+  const remaining = new Map(pending.map((tab) => [identity(tab), tab]));
+  const invalid = new Set();
+  const usedNames = new Set(reservedNames.map((name) => name.toLowerCase()));
+  const canonicalNames = allowedNames && new Map(allowedNames.map((name) => [name.toLowerCase(), name]));
+  const out = { newGroups: [], assignments: [], skipped: [], unresolved: [], failed: result?.failed };
+  const take = (tab) => {
+    const key = identity(tab);
+    const original = remaining.get(key);
+    if (original) remaining.delete(key);
+    return original;
+  };
+  if (newGroups) {
+    for (const group of Array.isArray(result?.newGroups) ? result.newGroups : []) {
+      const name = typeof group?.name === "string" ? group.name.trim() : "";
+      if (!name) {
+        for (const tab of Array.isArray(group?.tabs) ? group.tabs : []) invalid.add(identity(tab));
+        continue;
+      }
+      const tabs = (Array.isArray(group.tabs) ? group.tabs : []).map(take).filter(Boolean);
+      if (!tabs.length) continue;
+      let uniqueName = name;
+      for (let n = 2; usedNames.has(uniqueName.toLowerCase()); n++) uniqueName = `${name} (${n})`;
+      usedNames.add(uniqueName.toLowerCase());
+      out.newGroups.push({ ...group, name: uniqueName, tabs });
+    }
+  } else {
+    for (const assignment of Array.isArray(result?.assignments) ? result.assignments : []) {
+      const name = typeof assignment?.groupName === "string" ? assignment.groupName.trim() : "";
+      const canonical = canonicalNames ? canonicalNames.get(name.toLowerCase()) : name;
+      if (!canonical) { invalid.add(identity(assignment?.tabInfo)); continue; }
+      const tabInfo = take(assignment.tabInfo);
+      if (tabInfo) out.assignments.push({ ...assignment, tabInfo, groupName: canonical });
+    }
+  }
+  for (const tab of Array.isArray(result?.skipped) ? result.skipped : []) {
+    if (invalid.has(identity(tab))) continue;
+    const original = take(tab);
+    if (original) out.skipped.push(original);
+  }
+  out.unresolved = [...remaining.values()];
+  return out;
+};
 
 const clonePlan = (p) => ({
   assignedToExisting: (p.assignedToExisting || []).map((a) => ({ ...a })),
   newGroups: (p.newGroups || []).map((g) => ({ name: g.name, tabs: [...g.tabs] })),
+  rulePatches: (p.rulePatches || []).map((patch) => ({
+    groupName: patch.groupName,
+    titleTerms: (patch.titleTerms || []).map((t) => ({ ...t, skipped: Boolean(t.skipped) })),
+  })),
   skipped: [...(p.skipped || [])],
+  unresolved: [...(p.unresolved || [])],
+  failed: p.failed,
 });
 
 // Group the assignedToExisting array by target groupName into the same
@@ -51,6 +108,8 @@ const groupExistingByTarget = (assignedToExisting) => {
  *
  * @param {object} args
  * @param {Plan} args.plan
+ * @param {string[]} [args.existingNames] Known existing targets; also reserved
+ *   when reassigning to new groups so their names cannot collide.
  * @param {(pending) => Promise<{newGroups,skipped}>}   [args.onReassignToNew]
  * @param {(pending,buckets) => Promise<{assignments,skipped}>} [args.onAssignToPlanned]
  *   `buckets` is the modal's currently-kept groups (new + existing-target).
@@ -61,13 +120,15 @@ const groupExistingByTarget = (assignedToExisting) => {
  *
  * @returns {Promise<Plan | null>} The filtered plan to apply, or null on cancel.
  */
-export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onAssignToExisting }) =>
+export const showPreviewModal = ({ plan, existingNames, onReassignToNew, onAssignToPlanned, onAssignToExisting }) =>
   new Promise((resolve) => {
     let currentPlan = clonePlan(plan);
+    let reassigning = false;
     // Default: every entry is kept.
     const kept = new Set();
     for (const g of currentPlan.newGroups) kept.add(newKey(g.name));
     for (const a of currentPlan.assignedToExisting) kept.add(existingKey(a.groupName));
+    for (const patch of currentPlan.rulePatches) kept.add(titleKey(patch.groupName));
 
     const dialog = h("dialog", { class: "zao-preview-dialog" });
 
@@ -130,14 +191,15 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
 
       const existingTargets = groupExistingByTarget(currentPlan.assignedToExisting);
       const totalKept = countKept(existingTargets);
-      const totalGroups = currentPlan.newGroups.length + existingTargets.length;
-      const skippedCount = currentPlan.skipped.length;
+      const totalGroups = currentPlan.newGroups.length + existingTargets.length + currentPlan.rulePatches.length;
+      const skippedCount = currentPlan.skipped.length + currentPlan.unresolved.length;
       const pendingForReassign = pendingTabs(existingTargets).length;
+      const proposalLabel = currentPlan.rulePatches.length > 0 ? "proposal(s)" : "group(s)";
 
       const summaryText =
         totalGroups === 0 && skippedCount === 0
           ? "The AI found nothing to group."
-          : `${totalKept}/${totalGroups} group(s) kept · ${skippedCount} tab(s) ungrouped`;
+          : `${totalKept}/${totalGroups} ${proposalLabel} kept · ${skippedCount} tab(s) unchanged`;
       body.appendChild(h("p", { class: "zao-preview-summary", text: summaryText }));
 
       if (currentPlan.newGroups.length > 0) {
@@ -161,14 +223,26 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
         body.appendChild(sec);
       }
 
+      if (currentPlan.rulePatches.length > 0) {
+        const sec = h("section", { class: "zao-preview-section" });
+        sec.appendChild(h("h3", {
+          class: "zao-preview-section-title",
+          text: "Proposed title rules — click to keep / skip",
+        }));
+        for (const patch of currentPlan.rulePatches) {
+          sec.appendChild(renderTitleRuleBlock(patch));
+        }
+        body.appendChild(sec);
+      }
+
       if (skippedCount > 0) {
         const sec = h("section", { class: "zao-preview-section zao-preview-skipped" });
         sec.appendChild(h("h3", {
           class: "zao-preview-section-title",
-          text: `Skipped (${skippedCount}) — will remain ungrouped`,
+          text: `Skipped (${skippedCount}) — will remain in place`,
         }));
         const ul = h("ul", { class: "zao-preview-tab-list" });
-        for (const t of currentPlan.skipped) ul.appendChild(renderTabRow(t));
+        for (const t of [...currentPlan.skipped, ...currentPlan.unresolved]) ul.appendChild(renderTabRow(t));
         sec.appendChild(ul);
         body.appendChild(sec);
       }
@@ -179,7 +253,7 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
       //   (which classifies against the user's full rules table, regardless
       //   of what's kept in the modal).
       // Re-assign-to-new: just needs pending tabs.
-      const keptGroupCount = totalKept;
+      const keptGroupCount = keptBuckets().length;
       reassignToPlannedBtn.disabled =
         pendingForReassign === 0 || keptGroupCount === 0 || typeof onAssignToPlanned !== "function";
       reassignToPlannedBtn.title =
@@ -209,6 +283,7 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
       block.setAttribute("aria-pressed", isKept ? "true" : "false");
       block.tabIndex = 0;
       block.addEventListener("click", () => {
+        if (reassigning) return;
         if (isKept) kept.delete(key);
         else kept.add(key);
         render();
@@ -238,6 +313,69 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
       return block;
     }
 
+    function renderTitleRuleBlock(patch) {
+      const key = titleKey(patch.groupName);
+      const isKept = kept.has(key);
+      const classes = ["zao-preview-group", "zao-preview-title-rule"];
+      if (isKept) classes.push("zao-kept");
+      const block = h("div", { class: classes.join(" ") });
+      block.setAttribute("role", "button");
+      block.setAttribute("aria-pressed", isKept ? "true" : "false");
+      block.tabIndex = 0;
+      block.addEventListener("click", () => {
+        if (reassigning) return;
+        if (isKept) kept.delete(key);
+        else kept.add(key);
+        render();
+      });
+      block.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          block.click();
+        }
+      });
+
+      const head = h("div", { class: "zao-preview-group-head" });
+      head.appendChild(h("span", {
+        class: "zao-preview-group-name",
+        text: `${patch.groupName} (${activeTitleTerms(patch).length}/${patch.titleTerms.length} title ${patch.titleTerms.length === 1 ? "term" : "terms"})`,
+      }));
+      head.appendChild(h("span", {
+        class: "zao-preview-group-state",
+        text: isKept ? "✓ keep" : "skip",
+      }));
+      block.appendChild(head);
+      block.appendChild(renderRulePatch(patch));
+      return block;
+    }
+
+    function renderRulePatch(patch) {
+      const wrap = h("div", { class: "zao-preview-rule-patches" });
+      for (const item of patch.titleTerms || []) {
+        const pill = h("button", { class: `zao-pill zao-title-pill zao-preview-title-chip${item.warning ? " zao-preview-title-chip-warning" : ""}${item.skipped ? " zao-preview-title-chip-skipped" : ""}` });
+        pill.type = "button";
+        pill.setAttribute("aria-pressed", item.skipped ? "false" : "true");
+        pill.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (reassigning) return;
+          item.skipped = !item.skipped;
+          render();
+        });
+        pill.addEventListener("keydown", (e) => {
+          e.stopPropagation();
+        });
+        if (item.warning) pill.title = item.warning;
+        pill.appendChild(h("span", { class: "zao-pill-kind", text: "T" }));
+        pill.appendChild(h("span", { text: item.term }));
+        wrap.appendChild(pill);
+      }
+      return wrap;
+    }
+
+    function activeTitleTerms(patch) {
+      return (patch.titleTerms || []).filter((item) => !item.skipped);
+    }
+
     function renderTabRow(tabInfo) {
       const li = h("li", { class: "zao-preview-tab" });
       li.appendChild(h("span", { class: "zao-preview-tab-host", text: tabInfo.hostname || "(no host)" }));
@@ -251,6 +389,7 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
       let n = 0;
       for (const g of currentPlan.newGroups) if (kept.has(newKey(g.name))) n++;
       for (const t of existingTargets) if (kept.has(existingKey(t.name))) n++;
+      for (const patch of currentPlan.rulePatches) if (kept.has(titleKey(patch.groupName))) n++;
       return n;
     }
 
@@ -263,7 +402,8 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
       const fromUnkeptExisting = existingTargets
         .filter((t) => !kept.has(existingKey(t.name)))
         .flatMap((t) => t.tabs);
-      return [...fromUnkeptNew, ...fromUnkeptExisting, ...currentPlan.skipped];
+      return [...new Map([...fromUnkeptNew, ...fromUnkeptExisting, ...currentPlan.skipped, ...currentPlan.unresolved]
+        .map((tab) => [tab?._tab || tab, tab])).values()];
     }
 
     // All currently-kept "buckets" the AI can sort INTO, in unified { name, tabs }
@@ -278,6 +418,7 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
 
     // ─── Spinner-wrapped action runner ─────────────────────────────────────
     async function runWithSpinner(fn) {
+      reassigning = true;
       const reassignButtons = [reassignToPlannedBtn, reassignToExistingBtn, reassignToNewBtn];
       const allBtns = [...reassignButtons, cancelBtn, applyBtn];
       const wasDisabled = allBtns.map((b) => b.disabled);
@@ -296,6 +437,7 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
       } catch (e) {
         console.error(`${LOG} preview modal: action failed:`, e);
       } finally {
+        reassigning = false;
         for (const s of spinners) s.remove();
         for (let i = 0; i < reassignButtons.length; i++) reassignButtons[i].textContent = originalTexts[i];
         for (let i = 0; i < allBtns.length; i++) allBtns[i].disabled = wasDisabled[i];
@@ -310,9 +452,18 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
       if (pending.length === 0) return;
       if (typeof onReassignToNew !== "function") return;
       await runWithSpinner(async () => {
-        const result = await onReassignToNew(pending);
-        const incomingGroups = (result && result.newGroups) || [];
-        const newSkipped = (result && result.skipped) || [];
+        const result = sanitizePreviewReassignment(pending, await onReassignToNew(pending), {
+          newGroups: true,
+          reservedNames: [
+            ...(existingNames || []),
+            ...keptBuckets().map((group) => group.name),
+            ...currentPlan.assignedToExisting.map((assignment) => assignment.groupName),
+            ...currentPlan.rulePatches.map((patch) => patch.groupName),
+          ],
+        });
+        if (done) return;
+        const incomingGroups = result.newGroups;
+        const newSkipped = result.skipped;
 
         // Drop un-kept new groups + un-kept existing-target assignments —
         // their tabs were the "pending" set, now redistributed.
@@ -322,6 +473,8 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
         );
         currentPlan.newGroups.push(...incomingGroups);
         currentPlan.skipped = newSkipped;
+        currentPlan.unresolved = result.unresolved;
+        currentPlan.failed = result.failed || currentPlan.failed;
         // Auto-keep the newly proposed groups.
         for (const g of incomingGroups) kept.add(newKey(g.name));
         console.log(`${LOG} preview modal: re-assigned ${pending.length} tab(s) to new → ${incomingGroups.length} new group(s), ${newSkipped.length} skipped`);
@@ -337,9 +490,12 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
       if (typeof onAssignToPlanned !== "function") return;
 
       await runWithSpinner(async () => {
-        const result = await onAssignToPlanned(pending, buckets);
-        const assignments = (result && result.assignments) || [];
-        const newSkipped = (result && result.skipped) || [];
+        const result = sanitizePreviewReassignment(pending, await onAssignToPlanned(pending, buckets), {
+          allowedNames: buckets.map((bucket) => bucket.name),
+        });
+        if (done) return;
+        const assignments = result.assignments;
+        const newSkipped = result.skipped;
 
         // Index the kept buckets so we can route assignments back into
         // either newGroups (if matched to a kept new bucket) or
@@ -379,6 +535,8 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
           }
         }
         currentPlan.skipped = newSkipped;
+        currentPlan.unresolved = result.unresolved;
+        currentPlan.failed = result.failed || currentPlan.failed;
         console.log(`${LOG} preview modal: re-assigned ${pending.length} tab(s) to planned → ${placed} placed, ${newSkipped.length} skipped`);
       });
     }
@@ -390,9 +548,12 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
       if (typeof onAssignToExisting !== "function") return;
 
       await runWithSpinner(async () => {
-        const result = await onAssignToExisting(pending);
-        const assignments = (result && result.assignments) || [];
-        const newSkipped = (result && result.skipped) || [];
+        const result = sanitizePreviewReassignment(pending, await onAssignToExisting(pending), {
+          allowedNames: existingNames,
+        });
+        if (done) return;
+        const assignments = result.assignments;
+        const newSkipped = result.skipped;
 
         // Drop un-kept newGroups + un-kept existing-target assignments —
         // their tabs were in the pending pool and are about to be redistributed.
@@ -416,6 +577,8 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
           placed++;
         }
         currentPlan.skipped = newSkipped;
+        currentPlan.unresolved = result.unresolved;
+        currentPlan.failed = result.failed || currentPlan.failed;
         console.log(`${LOG} preview modal: re-assigned ${pending.length} tab(s) to existing rules → ${placed} placed, ${newSkipped.length} skipped`);
       });
     }
@@ -434,10 +597,20 @@ export const showPreviewModal = ({ plan, onReassignToNew, onAssignToPlanned, onA
         droppedTabs.push(a.tabInfo);
         return false;
       });
+      const finalRulePatches = (currentPlan.rulePatches || [])
+        .filter((patch) => kept.has(titleKey(patch.groupName)))
+        .map((patch) => ({
+          ...patch,
+          titleTerms: activeTitleTerms(patch).map((item) => ({ ...item })),
+        }))
+        .filter((patch) => patch.titleTerms.length > 0);
       cleanup({
         assignedToExisting: finalExisting,
         newGroups: finalNewGroups,
+        rulePatches: finalRulePatches,
         skipped: [...currentPlan.skipped, ...droppedTabs],
+        unresolved: [...currentPlan.unresolved],
+        failed: currentPlan.failed,
       });
     }
 

@@ -8,24 +8,27 @@ Builds the pill table inside the settings dialog. One export, lots of internal h
 |---|---|
 | `buildRulesEditor(rules)` | Returns the `<div class="zao-rules-editor">` container element. Mutations to the `rules` array auto-persist to the pref. The container exposes a `_zaoRefresh(reason)` method for external refresh triggers. |
 | `buildSkipDomainsEditor()` | Returns a `<div class="zao-skip-editor">` pill-row editor for the skip-domains list. Reads/writes `extensions.zen-auto-organize.skip-domains-json` directly. Refreshes via its own pref observer when the pref changes externally (e.g. via Backup & Restore import or the tab right-click "Skip" submenu entry). |
-| `buildBackupRestoreSection()` | Returns a `<div class="zao-backup-section">` containing Export / Import… buttons (the section header + description come from Sine's native separator declared in preferences.json, NOT from this widget). **Export** saves `{ rules, skipDomains }` JSON to the user's default Downloads folder via `IOUtils.writeUTF8` and registers it with `Downloads.PUBLIC` so it appears in Firefox's downloads panel. Filename: `wand-backup-<N>groups-<YYYYMMDD-HHmmss>.json`. Falls back to clipboard copy if the Downloads API is unavailable. **Import…** opens a file picker, validates, and writes both prefs. Accepts the `{ rules, skipDomains }` object shape or a legacy bare rules array for back-compat. |
+| `buildBackupRestoreSection()` | Returns a `<div class="zao-backup-section">` containing left-aligned Export / Import… buttons (the section header + description come from Sine's native separator declared in preferences.json, NOT from this widget). **Export** saves `{ rules, skipDomains, customIcons }` JSON to the user's default Downloads folder via `IOUtils.writeUTF8` and registers it with `Downloads.PUBLIC` so it appears in Firefox's downloads panel. Filename: `wand-backup-<N>groups-<YYYYMMDD-HHmmss>.json`. Falls back to clipboard copy if the Downloads API is unavailable. **Import…** opens a file picker, validates, and writes included prefs. Accepts the `{ rules, skipDomains, customIcons }` object shape or a legacy bare rules array for back-compat. Imported rules use `sanitizeRules()` from `rules.mjs`; missing custom icon references are cleared from imported rules. |
 | `teardownRulesPrefObserver()` / `teardownSkipPrefObserver()` | Remove the pref observers registered inside the editor builders. Called from `prefs-ui.mjs`'s `teardownSettingsObserver` on window unload to prevent observer leaks. |
 
 ## DOM structure
 
 ```
 <div class="zao-rules-editor">
-  <div class="zao-header">           ← column titles: color / Category / Domains / —
-    <div></div> <div>Category</div> <div>Domains</div> <div></div>
+  <div class="zao-header">           ← column titles: color+icon / Category / Matches / —
+    <div></div> <div>Category</div> <div>Matches</div> <div></div>
   </div>
   <div class="zao-row">              ← one row per rule
     <div class="zao-color-cell">
       <div class="zao-swatch" role="button" />
+      <button class="zao-icon-button">…</button>
     </div>
     <input class="zao-group-name" />
     <div class="zao-domains">
-      <span class="zao-pill">…<button class="zao-pill-remove">×</button></span>
-      <button class="zao-pill-add">+</button>
+      <span class="zao-pill zao-domain-pill"><span class="zao-pill-kind">@</span>…</span>
+      <span class="zao-pill zao-title-pill"><span class="zao-pill-kind">T</span>…</span>
+      <button class="zao-pill-add zao-domain-add">+@</button>
+      <button class="zao-pill-add zao-title-add">+T</button>
     </div>
     <button class="zao-remove-row">×</button>
   </div>
@@ -43,11 +46,26 @@ All elements created via `h(tag)` from `config.mjs` (the HTML namespace helper) 
 | Action | What happens |
 |---|---|
 | Type in group-name input | `rule.name = value` on every keystroke; `persist()` |
-| Click `+` pill | Replaces the button with an `<input>`. Enter commits and re-renders. Escape cancels. Blur commits (via 0ms timeout so a click on another pill button registers first). |
-| Click `×` on pill | Removes the domain, persists, re-renders. |
+| Click `+@` pill | Adds a domain/hostname match chip. Enter commits and re-renders. Escape cancels. Blur commits. |
+| Click `+T` pill | Adds a page-title substring match chip. Enter commits and re-renders. Escape cancels. Blur commits. |
+| Click `×` on pill | Removes the domain/title match, persists, re-renders. |
 | Click `×` on row | Removes the rule, persists, re-renders. |
 | Click `+ Add group` | Pushes a blank rule, persists, re-renders. |
-| Click swatch | Opens `color-picker.mjs` popover. |
+| Click swatch | Opens `color-picker.mjs` popover for solid/gradient colors. |
+| Click icon button | Opens `emoji-picker.mjs` popover. Pick from the local emoji grid, uploaded custom icons, or search by category/name. |
+| Drag a row's `⋮⋮` grip | Reorders rules (see "Drag-and-drop reordering" below). |
+| Drag a pill | Reorders that pill within its own rule's Matches cell (see below). |
+
+Rule saves also call `syncLiveGroupAppearances()`, which asks the browser window to re-run `syncAllGroupColors()` so color/gradient/icon changes repaint existing groups immediately.
+
+## Drag-and-drop reordering
+
+Two independent drag features share one container-level dragover/drop listener pattern (installed once per container, guarded by a boolean flag, since `render()` fully rebuilds the DOM on every mutation and per-element listeners would need re-attaching every time):
+
+- **Row reorder** (rules table order — Pass 1 is first-match-wins, so this changes match priority). Drag handle: the `⋮⋮` grip only, so accidental drags from inputs/pills are impossible. MIME marker: `text/zao-rule-idx`. Hit-testing: vertical position against each row's bounding rect (rows never wrap). Drop indicator: `.zao-row-drop-before`/`-after` (top/bottom edge).
+- **Pill reorder** (free interleaving of domain + title-term pills within one rule's Matches cell — not two separately-ordered sublists). Drag handle: the pill body itself, no grip glyph — a documented trade-off is that click-dragging pill text to select/copy it no longer works. The remove button is excluded via `draggable="false"` (checking `e.target.closest()` inside the pill's own `dragstart` doesn't work, since by the time `dragstart` fires `e.target` already *is* the pill). MIME marker: `text/zao-pill`, kept distinct from the row marker so the two features never interfere on the same container. Confined to the dragged pill's own rule via a `_zaoRule` reference tagged onto each `.zao-domains` element. Hit-testing: nearest-pill-by-2D-distance from cursor to pill-center (not pure vertical, since pills wrap across lines with `flex-wrap` — a pill on the next visual line is simply farther away). Drop indicator: `.zao-pill-drop-before`/`-after` (left/right edge, since pills sit in a horizontal wrapping row). On drop, writes the rule's full new order to its (lazily-created) `matchOrder` field via `getOrderedMatches()`/direct assignment — see [module-rules.md](module-rules.md) for that field's shape and the `matchOrder` design (additive, display-only, never touches `domains`/`titleTerms`).
+
+`buildCustomIconsEditor()` renders a Look & Feel action row matching the native preference layout: `Custom Icons — Upload local image icons and manage the custom-only picker list. Recommended 128x128; will resize if different.` with Upload/Manage buttons in the shared control column. Uploaded image files are resized to a 128px longest side, stored as data URLs in `extensions.zen-auto-organize.custom-icons-json`, and filenames become searchable icon names. The Manage icons button opens a custom-only picker popover; clicking a custom icon there removes it and clears matching rule references.
 
 ## Why a full re-render on each mutation
 
