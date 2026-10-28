@@ -904,3 +904,46 @@ test("taxonomy reduction drops unsolicited examples and bounds even maximum-leng
   assert.ok(plan.categories.every((category) => category.examples.length === 0));
   assert.equal(plan.newGroups[0].tabs.length, input.length);
 });
+
+
+test("Mercury 3 gets 65536 tokens for one 300-tab grouping request without model discovery or provider changes", async (t) => {
+  let calls = 0;
+  install(t, async (url, init) => {
+    calls++;
+    assert.equal(url, "https://openrouter.ai/api/v1/chat/completions");
+    assert.equal(init.method, "POST");
+    const body = JSON.parse(init.body);
+    assert.equal(body.model, "inception/mercury-3");
+    assert.equal(body.max_tokens, 65536);
+    assert.equal(body.reasoning, undefined);
+    assert.match(body.messages[0].content, /^AI WORKSPACE GROUPING/);
+    return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(fastGroups(body.messages[0].content)) } }] }));
+  });
+  const input = makeTabs(300);
+  const plan = await planAIWorkspace(input, { engine: "custom", settings: {
+    ...settingsFor("custom"), endpoint: "https://openrouter.ai/api/v1", model: "inception/mercury-3",
+  } });
+  assert.equal(calls, 1); assert.equal(plan.failed, undefined);
+  assert.equal(plan.newGroups[0].tabs.length, input.length);
+  assert.doesNotThrow(() => validateAIPlan(plan, input));
+});
+
+test("Mercury's larger budget still preserves typed-limit recovery and native identities", async (t) => {
+  let calls = 0;
+  install(t, async (url, init) => {
+    calls++;
+    const body = JSON.parse(init.body), prompt = body.messages[0].content;
+    assert.equal(body.max_tokens, 65536);
+    assert.equal(body.model, "inception/mercury-3");
+    if (isFastGrouping(prompt)) return new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: null } }] }));
+    const answer = isClassification(prompt) ? assignments(prompt) : { categories };
+    return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(answer) } }] }));
+  });
+  const input = makeTabs(120);
+  const plan = await planAIWorkspace(input, { engine: "custom", settings: {
+    ...settingsFor("custom"), endpoint: "https://openrouter.ai/api/v1", model: "inception/mercury-3",
+  } });
+  assert.equal(calls, 5); assert.equal(plan.failed, undefined);
+  assert.equal(new Set(allPlanned(plan)).size, input.length);
+  assert.doesNotThrow(() => validateAIPlan(plan, input));
+});

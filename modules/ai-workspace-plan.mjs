@@ -9,15 +9,12 @@ import { PROVIDER_TAB_BATCH_SIZE } from "./provider-batching.mjs";
 import { getProviderReadiness } from "./provider-readiness.mjs";
 import { readProviderSettings } from "./provider-settings.mjs";
 import { providerJson } from "./remote-provider.mjs";
+import { workspaceOutputBudget } from "./provider-requests.mjs";
 import { ollamaGenerateJson } from "./ollama-transport.mjs";
 import { getActiveSortSignal, throwIfSortCancelled, reportSortProgress } from "./sort-session.mjs";
 import { safeProviderErrorMessage } from "./safe-log.mjs";
 
 const CHAT_ENGINES = new Set(["openai", "gemini", "custom", "ollama"]);
-// Reasoning models share their output budget with the JSON answer. A 4K
-// budget can end with finish_reason=length and no answer for a 300-tab plan.
-// One bounded 8K request still costs fewer worst-case tokens than five 4K calls.
-const MAX_JSON_TOKENS = 8192;
 export const FAST_WORKSPACE_TAB_LIMIT = 300;
 export const FAST_WORKSPACE_PROMPT_LIMIT = 72 * 1024;
 export const RECOVERY_BATCH_SIZE = 50;
@@ -345,13 +342,14 @@ export const planAIWorkspace = async (tabs, {
       ? "Allow sending tab metadata to the selected AI provider before sorting."
       : "Complete the selected AI provider's settings before sorting." };
   }
+  const maxJsonTokens = workspaceOutputBudget(configured);
   const ask = async (prompt, requestSignal = signal) => {
     checkpoint();
     requestSignal?.throwIfAborted();
     let result;
     if (generate) result = await generate(prompt, requestSignal);
     else if (engine === "ollama") {
-      const response = await ollamaGenerateJson(configured.endpoint, configured.model, prompt, MAX_JSON_TOKENS, requestSignal);
+      const response = await ollamaGenerateJson(configured.endpoint, configured.model, prompt, maxJsonTokens, requestSignal);
       if (!response.ok) {
         const error = new Error(response.error);
         error.status = response.status;
@@ -361,7 +359,7 @@ export const planAIWorkspace = async (tabs, {
         throw error;
       }
       result = response.parsed;
-    } else result = await providerJson(configured, prompt, MAX_JSON_TOKENS, requestSignal);
+    } else result = await providerJson(configured, prompt, maxJsonTokens, requestSignal);
     checkpoint();
     requestSignal?.throwIfAborted();
     return result;

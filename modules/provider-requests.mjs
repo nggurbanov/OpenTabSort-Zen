@@ -1,7 +1,28 @@
 const AUTH_HEADER_NAME = ["author", "ization"].join("");
+const DEFAULT_WORKSPACE_OUTPUT_TOKENS = 8192;
+const MERCURY_WORKSPACE_OUTPUT_TOKENS = 65536;
+const MERCURY_MODELS = new Set(["inception/mercury-3", "inception/mercury-3-20261019"]);
+
+// Verified against OpenRouter's public model metadata on 2026-10-28:
+// Mercury 3 permits 131072 output tokens; LFM 2.5 permits only 8192.
+// Keep unknown providers/models conservative and avoid adding discovery latency
+// to every sort. This budget selects a ceiling, not a requested answer length.
+export const workspaceOutputBudget = (provider) => {
+  if (!["openai", "custom"].includes(provider.provider) ||
+      (provider.provider === "custom" && provider.format !== "openai") ||
+      !MERCURY_MODELS.has(provider.model?.trim())) return DEFAULT_WORKSPACE_OUTPUT_TOKENS;
+  try {
+    const endpoint = new URL(provider.endpoint);
+    if (endpoint.origin === "https://openrouter.ai" && !endpoint.username && !endpoint.password &&
+        !endpoint.search && !endpoint.hash && /^\/api\/v1(?:\/chat\/completions)?\/?$/.test(endpoint.pathname)) {
+      return MERCURY_WORKSPACE_OUTPUT_TOKENS;
+    }
+  } catch {}
+  return DEFAULT_WORKSPACE_OUTPUT_TOKENS;
+};
 
 export const buildProviderRequest = (provider, prompt, maxTokens) => {
-  const boundedTokens = boundMaxTokens(maxTokens);
+  const boundedTokens = boundMaxTokens(maxTokens, getProviderKind(provider) === "ollama" ? 8192 : 65536);
   switch (provider.provider) {
     case "openai":
       return openAiRequest(provider.endpoint, provider.apiKey, provider.model, prompt, boundedTokens);
@@ -61,7 +82,7 @@ const appendPath = (endpoint, path) => {
   return trimmed.endsWith(path) ? trimmed : `${trimmed}${path}`;
 };
 
-const boundMaxTokens = (value) => Math.min(Math.max(Number.isFinite(value) ? Math.trunc(value) : 800, 64), 8192);
+const boundMaxTokens = (value, ceiling) => Math.min(Math.max(Number.isFinite(value) ? Math.trunc(value) : 800, 64), ceiling);
 
 const parseJson = (text) => {
   try {

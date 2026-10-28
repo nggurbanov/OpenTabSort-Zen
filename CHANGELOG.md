@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.4 — Unreleased
+
+- Give Mercury 3 workspace planning up to 65536 output tokens on OpenRouter, including the verified dated model alias. The request builder now preserves the larger ceiling instead of silently clipping it to 8192.
+- Keep unknown models/providers and Ollama workspace planning at the existing 8192 ceiling; LFM 2.5's advertised model maximum is itself 8192. No extra model-discovery requests or settings changes are needed.
+- Retain Stop, shared recovery deadlines/request limits, typed output-limit recovery, and the selected model's reasoning defaults.
+
 ## 2.0.3 — Unreleased
 
 - Recover explicit AI output limits automatically: infer one workspace taxonomy, classify batches of up to 50 tabs, and halve only a truncated batch. Keep the same selected provider and model.

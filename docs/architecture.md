@@ -38,7 +38,9 @@ Inputs are compact titles, hostname/path context, and current group labels. URL 
 
 Planning returns existing-group assignments, new groups, and unresolved tabs. Missing or invalid assignments never fabricate tab references. Unresolved tabs retain their original membership.
 
-Primary planner requests allow up to 8192 output tokens, including Ollama. This permits more reasoning and answer text but cannot guarantee completion or latency; mandatory reasoning is not disabled.
+Workspace output budgets are selected in `provider-requests.mjs`. Verified Mercury 3 IDs (`inception/mercury-3` and `inception/mercury-3-20261019`) on the HTTPS OpenRouter chat endpoint receive a 65536-token ceiling. Other models/providers/formats, including Ollama and LFM 2.5, retain 8192. OpenRouter's public metadata checked on 2026-10-28 advertised 131072 maximum output tokens for Mercury 3 and 8192 for LFM 2.5. The generic chat request builder permits explicit budgets up to 65536; legacy callers still request their existing smaller budgets. Ollama's transport ceiling remains 8192.
+
+This is an explicit verified-model policy, not automatic catalog discovery. No extra HTTP requests or background tasks are added to sorting. Increasing the ceiling permits more reasoning and answer text but does not require spending the whole budget, guarantee completion/latency, or disable mandatory reasoning. Initial and recovery requests use the same selected budget.
 
 An explicit `PROVIDER_OUTPUT_LIMIT` triggers recovery. The planner infers a compact global taxonomy using every tab, with 48 KiB UTF-8 inventory chunks, splitting a truncated inventory and merging partial taxonomies before classification. Summary reduction retains only bounded names/descriptions, without model-supplied examples. Classification starts at 50 tabs; a truncated batch is immediately halved, and the smaller working width is retained for later batches. Stable global IDs and fresh local indices preserve original native tab references.
 
