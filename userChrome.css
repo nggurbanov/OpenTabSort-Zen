@@ -75,7 +75,8 @@ tab-group.zao-has-custom-icon .tab-group-label::before {
 }
 .pinned-tabs-container-separator[data-zao-state] {
   position: relative !important; z-index: 2;
-  background: var(--zen-colors-tertiary, Canvas);
+  /* Let the workspace gradient show through in every operation state. */
+  background: transparent !important;
 }
 .zen-workspace-pinned-tabs-section:has(> .pinned-tabs-container-separator[data-zao-state]) {
   position: sticky !important; top: var(--zao-pinned-top, 0px); z-index: 2;
@@ -83,13 +84,17 @@ tab-group.zao-has-custom-icon .tab-group-label::before {
 .pinned-tabs-container-separator > toolbarseparator { position: relative; }
 #tab-wand-button {
   appearance: none !important; background: transparent !important; border: 0 !important;
-  min-width: 28px !important; min-height: 28px !important; margin: 0 2px !important;
-  padding: 5px !important; border-radius: 5px !important; color: inherit !important;
-  opacity: 0; pointer-events: none; transition: opacity 140ms ease, background-color 140ms ease;
+  width: 0 !important; min-width: 0 !important; min-height: 28px !important; margin: 0 !important;
+  overflow: hidden; flex: 0 0 auto;
+  padding: 5px 0 !important; border-radius: 5px !important; color: inherit !important;
+  opacity: 0; pointer-events: none; transition: opacity 140ms ease, width 140ms ease, padding 140ms ease, margin 140ms ease, background-color 140ms ease;
 }
 .pinned-tabs-container-separator:hover #tab-wand-button,
 .pinned-tabs-container-separator:focus-within #tab-wand-button,
-#tab-wand-button:focus-visible, #tab-wand-button[data-zao-busy] { opacity: 1; pointer-events: auto; }
+#tab-wand-button:focus-visible, #tab-wand-button[data-zao-busy] {
+  width: 28px !important; margin: 0 2px !important; padding: 5px !important;
+  opacity: 1; pointer-events: auto;
+}
 #tab-wand-button:hover { background: color-mix(in srgb, currentColor 9%, transparent) !important; }
 #tab-wand-button:focus-visible { outline: 2px solid var(--zen-primary-color, AccentColor); outline-offset: 1px; }
 #tab-wand-button .toolbarbutton-box { padding: 0 !important; }

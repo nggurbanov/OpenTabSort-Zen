@@ -28,6 +28,7 @@ const state = () => chrome(`
     stopIcon: win.getComputedStyle(button.querySelector(".zao-stop-icon")).display, sortIcon: win.getComputedStyle(button.querySelector(".zao-sort-icon")).display,
     animation: win.getComputedStyle(host.querySelector("toolbarseparator"), "::after").animationName,
     placement: win.document.querySelector(".zao-sort-progress")?.dataset.placement,
+    background: win.getComputedStyle(host).backgroundColor,
     y: rect.y, height: rect.height, width: rect.width, button: {x:br.x,y:br.y,width:br.width,height:br.height},
     ancestors: [...(function*(){for(let n=host;n;n=n.parentElement)yield n;})()].slice(0,8).map(n=>({tag:n.localName,id:n.id,cls:n.className,height:n.getBoundingClientRect().height,overflow:win.getComputedStyle(n).overflow,position:win.getComputedStyle(n).position})),
     html: host.outerHTML, before: {content:win.getComputedStyle(host,"::before").content, width:win.getComputedStyle(host,"::before").width},
@@ -64,7 +65,7 @@ try {
   await pause();
   await chrome('win.gZenWorkspaces.activeWorkspaceElement.querySelector(".pinned-tabs-container-separator").scrollIntoView({block:"nearest",behavior:"instant"});');
   await pause();
-  await pointer(600, 300); receipt.idle = await state(); await screenshot("dark-idle");
+  await pointer(600, 300); receipt.idle = await state(); assert.equal(receipt.idle.button.width, 0, "hidden sorting button must leave no gap in the divider"); await screenshot("dark-idle");
   await pointer(receipt.idle.button.x + 10, receipt.idle.button.y + 10); assert.equal(await wait('win.getComputedStyle(win.gZenWorkspaces.activeWorkspaceElement.querySelector("#tab-wand-button")).opacity === "1"'), true); receipt.hover = await state(); await screenshot("dark-hover");
   const entered = new Promise((resolve) => gate = resolve); await clickSort();
   let timer; try { await Promise.race([entered,new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error("Sort click did not start an HTTP request")),15000))]); } finally {clearTimeout(timer);}
@@ -72,10 +73,11 @@ try {
   assert.equal(receipt.busy.placement, "separator"); assert.equal(receipt.busy.label, "Stop sorting");
   assert.equal(receipt.busy.stopIcon, "flex"); assert.equal(receipt.busy.sortIcon, "none");
   assert.equal(receipt.busy.opacity, "1"); assert.equal(receipt.busy.animation, "zao-divider-work");
+  assert.equal(receipt.busy.background, "rgba(0, 0, 0, 0)", "sorting must preserve the workspace background");
   assert.equal(receipt.busy.topRows, 0); assert.equal(receipt.busy.height, receipt.idle.height);
   await chrome('Services.prefs.setIntPref("ui.prefersReducedMotion", 1);');
   assert.equal(await wait('win.matchMedia("(prefers-reduced-motion: reduce)").matches'),true);
-  assert.equal((await state()).animation,"none");
+  assert.equal(await wait('win.getComputedStyle(win.gZenWorkspaces.activeWorkspaceElement.querySelector(".pinned-tabs-container-separator > toolbarseparator"), "::after").animationName === "none"'), true);
   await chrome('Services.prefs.setIntPref("ui.prefersReducedMotion", 0);');
   assert.equal(await wait('!win.matchMedia("(prefers-reduced-motion: reduce)").matches'),true);
   await clickSort(); assert.equal(await wait('win.document.querySelector(".zao-sort-progress")?.dataset.state !== "busy"'), true);
