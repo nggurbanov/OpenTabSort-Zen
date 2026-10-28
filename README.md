@@ -2,9 +2,9 @@
 
 Hundreds of tabs, one button. OpenTabSort uses AI to organize the active [Zen Browser](https://zen-browser.app) workspace into groups.
 
-Set up an AI connection once, then click the wand. AI works out the groups from your tabs. Progress, **Stop**, and session **Undo** are available while you organize.
+Set up an AI connection once, then click the wand. AI works out the groups from your tabs. A quiet sidebar row shows progress and **Stop**; **Undo** appears when sorting finishes.
 
-Development version: **2.0.0, unreleased**. Based on the MIT-licensed [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand).
+Development version: **2.0.1, planned / unreleased**. Based on the MIT-licensed [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand).
 
 ## Install
 
@@ -31,7 +31,7 @@ Pinned and essential tabs, tabs in other workspaces, and excluded domains stay i
 | **Custom endpoint** | Endpoint, model, optional API key, and consent. Existing protocol options remain in Advanced. |
 | **Decision models** | Decision endpoint, model, key, consent, and an AI connection for automatically creating groups. |
 
-Chat providers and Ollama infer a shared set of groups from the workspace, then classify tabs in bounded batches. Decision models create fresh categories before live classification. Built-in local AI uses embedding-based clustering; its grouping and naming differ from a chat model.
+Chat providers and Ollama group a normal workspace of up to 300 tabs in one compact request, with a 72 KiB prompt limit. Larger inventories use a shared taxonomy and bounded classification batches. Decision models create fresh categories before live classification. Built-in local AI uses embedding-based clustering; its grouping and naming differ from a chat model.
 
 For Ollama, install it from [ollama.com](https://ollama.com), run `ollama pull qwen2.5:1.5b`, then select Ollama in AI setup. Model loading happens on demand; startup warming is off by default.
 
@@ -39,9 +39,9 @@ For Ollama, install it from [ollama.com](https://ollama.com), run `ollama pull q
 
 **Stop** interrupts AI work. Chat, Ollama, and built-in local sorting plan before moving tabs, so stopping during planning leaves the layout unchanged. Decision sorting applies batches live; Stop keeps completed batches.
 
-**Undo sort** restores the preceding layout during the current browser session, including native group membership, order, appearance, and collapsed state. It refuses to overwrite later layout edits. Failed or unresolved classifications keep their previous membership.
+**Undo** restores the preceding layout during the current browser session, including native group membership, order, appearance, and collapsed state. Successful feedback disappears after five seconds, pausing while hovered or focused; dismissing it retains the valid session Undo receipt. It refuses to overwrite later layout edits. Failed or unresolved classifications keep their previous membership.
 
-Changes to the workspace, eligible tabs, or relevant settings invalidate work in progress. The progress panel reports what happened and offers AI setup when a connection needs attention.
+Changes to the workspace, eligible tabs, or relevant settings invalidate work in progress. The compact row sits beneath the wand in the native sidebar and offers **Setup** when a connection needs attention. Short status text keeps the row quiet; the full message remains in its tooltip and accessible label. Visible tabs settle into place with a brief animation that respects reduced motion and adds no artificial waiting.
 
 ## Privacy
 
@@ -56,7 +56,8 @@ Built-in local AI and advanced sorting may fetch small page snippets using brows
 - [Advanced tools and saved data](docs/advanced.md)
 - [Architecture](docs/architecture.md)
 - [Development and real Zen checks](docs/e2e-zen.md)
-- [Overhaul verification and measurement limits](docs/overhaul-verification.md)
+- [Tidy interaction and configured-model verification](docs/tidy-verification.md)
+- [2.0.0 overhaul verification and measurement limits](docs/overhaul-verification.md)
 - [Changelog](CHANGELOG.md)
 
 For development, use Node 20+ and run `npm run check`. When reporting a bug, include relevant Browser Console messages with the `[OpenTabSort]` prefix and omit credentials.

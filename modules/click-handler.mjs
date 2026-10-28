@@ -15,6 +15,8 @@ import { getProviderReadiness } from "./provider-readiness.mjs";
 import { showSortProgress } from "./operation-ui.mjs";
 import { showToast } from "./ui-toast.mjs";
 import { openAISetup } from "./setup-navigation.mjs";
+import { sortFailureNotice } from "./sort-failure.mjs";
+import { safeProviderErrorMessage } from "./safe-log.mjs";
 
 console.log(`${LOG} workspace AI loaded — v${BUILD_VERSION}`);
 const busyWindows = new WeakSet();
@@ -58,7 +60,7 @@ const organizeWorkspace = async () => {
   }
   let session, applying = false, finished = false;
   const ui = showSortProgress({ stage: `Preparing ${tabs.length} tabs…`, onStop: () => session?.stop(), onUndo: undoLastSort, onDismiss: clearSortUndo, onSetup: openAISetup });
-  const finish = (message, undo = canUndoLastSort()) => { finished = true; ui.finish(message, undo); };
+  const finish = (message, undo = canUndoLastSort(), label) => { finished = true; ui.finish(message, undo, { label }); };
   const settingsBefore = captureSortSettings(Services.prefs);
   try {
     session = beginSortSession({ isCurrent: () => window.gZenWorkspaces?.activeWorkspace === workspaceId &&
@@ -78,8 +80,11 @@ const organizeWorkspace = async () => {
     session.checkpoint();
     validateAIPlan(plan, tabs);
     if (plan.failed && !plan.assignedToExisting.length && !plan.newGroups.length) {
+      const failure = sortFailureNotice(plan.failed, engine);
+      const detail = safeProviderErrorMessage(new Error(plan.failed), [settings?.apiKey]);
+      console.warn(`${LOG} workspace planning failed [${failure.code}]: ${detail}`);
       ui.setupAvailable();
-      finish("AI could not organize these tabs. Your layout is unchanged. Check the connection in AI setup and try again."); return;
+      finish(failure.message, canUndoLastSort(), failure.label); return;
     }
     if (review && (plan.assignedToExisting.length || plan.newGroups.length)) {
       const { showPreviewModal } = await import("./preview-modal.mjs");
@@ -101,16 +106,19 @@ const organizeWorkspace = async () => {
     const moved = captureLayout().filter((entry) => entry.group !== before.get(entry.ref)?.group || entry.position !== before.get(entry.ref)?.position).length;
     const unchanged = (plan.skipped?.length || 0) + (plan.unresolved?.length || 0) + (applied.failedTabs?.length || 0);
     finish(applied.errors?.length ? `Some tabs could not be moved. ${moved} changed; failed tabs were restored where possible.` :
-      moved ? `Organized ${tabs.length} tabs · ${moved} moved${unchanged ? ` · ${unchanged} kept in place` : ""}` :
-      unchanged ? `AI kept ${unchanged} tabs in place. Your layout is unchanged.` : "Your tabs are already organized.", canUndo);
+      moved ? `Tidied ${tabs.length} tabs${unchanged ? ` · ${unchanged} kept in place` : ""}` :
+      unchanged ? `AI kept ${unchanged} tabs in place. Your layout is unchanged.` : "Your tabs are already organized.", canUndo,
+      applied.errors?.length ? "Some tabs stayed" : moved ? `${tabs.length} tabs tidy` : unchanged ? "Tabs kept in place" : "Already tidy");
   } catch (error) {
     if (error.name === "AbortError" || session?.signal.aborted) {
       finish(session?.reason === "stale" ? "Tabs or settings changed. Your layout is unchanged. Run it again." : "Sorting stopped. Your layout is unchanged.");
     } else {
-      console.error(`${LOG} workspace sorting failed:`, error);
+      const failure = sortFailureNotice(error, engine);
+      const detail = safeProviderErrorMessage(error, [settings?.apiKey]);
+      console.warn(`${LOG} workspace sorting failed [${failure.code}]: ${detail}`);
       const canUndo = applying ? recordSortUndo(original, { workspaceId, rulesBefore, rulesAfter: rulesBefore }) : canUndoLastSort();
       ui.setupAvailable();
-      finish("AI sorting could not finish. Check AI setup and try again.", canUndo);
+      finish(failure.message, canUndo, failure.label);
     }
   } finally {
     session?.dispose();

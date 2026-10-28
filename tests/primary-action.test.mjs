@@ -104,3 +104,13 @@ test("Local workspace AI receives all tabs and an empty rules list without loadi
   assert.equal(result.apply, 1);
   assert.equal(result.advancedPreserved, true);
 });
+
+
+test("a failed provider exposes useful recovery without mutating any tabs", () => {
+  const result = run("provider-failure");
+  assert.equal(result.apply, 0); assert.equal(result.mutations, 0);
+  assert.equal(result.requests, 1); assert.equal(result.records, 0);
+  assert.match(result.finishes.at(-1).message, /access was rejected.*key/i);
+  assert.doesNotMatch(result.finishes.at(-1).message, /layout is unchanged.*connection/i);
+  assert.equal(result.observersLeft, 0); assert.equal(result.activeSignal, false);
+});

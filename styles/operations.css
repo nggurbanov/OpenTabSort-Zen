@@ -1,18 +1,40 @@
-/* Native browser operation feedback, loaded only when it is needed. */
+/* Compact browser-chrome feedback. Also embedded in operation-ui.mjs so Sine
+   never has to resolve an additional stylesheet before showing the first row. */
 .zao-operation {
-  position: fixed; inset-inline-start: 16px; inset-block-end: 16px; z-index: 2147483646;
-  box-sizing: border-box; width: min(360px, calc(100vw - 32px)); padding: 14px;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-  color: var(--toolbar-color, CanvasText); background: var(--zen-colors-tertiary, Canvas);
-  border: 1px solid var(--zen-colors-border, color-mix(in srgb, currentColor 25%, transparent));
-  border-radius: 8px; font: menu; box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
+  box-sizing: border-box; display: flex; flex: 0 0 auto; align-items: center;
+  align-self: stretch; min-width: 0; min-height: 32px; gap: 4px; margin: 0 4px 4px;
+  padding: 2px 4px; border: 0; border-radius: 6px;
+  color: var(--toolbar-color, CanvasText); background: transparent;
+  font: menu; font-size: 12px; line-height: 1.3; text-align: start;
+  animation: zao-feedback-appear 120ms ease-out;
 }
-.zao-operation-message { flex: 1 1 100%; margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
-.zao-operation progress { width: 100%; accent-color: var(--zen-primary-color, AccentColor); }
-.zao-operation button { appearance: auto; font: inherit; min-height: 30px; padding: 4px 10px; cursor: pointer; }
-.zao-operation button:focus-visible { outline: 2px solid var(--zen-primary-color, AccentColor); outline-offset: 2px; }
+.zao-operation[data-placement="overlay"] {
+  position: fixed; z-index: 2147483646; width: min(300px, calc(100vw - 16px));
+  margin: 0; background: var(--zen-colors-tertiary, Canvas);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
+}
+.zao-operation-message {
+  flex: 1 1 auto; min-width: 0; margin: 0; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis;
+}
+.zao-operation-indicator { flex: none; width: 12px; height: 12px; animation: zao-feedback-work 900ms linear infinite; }
+.zao-operation button {
+  appearance: none; -moz-appearance: none; box-sizing: border-box; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 0; min-height: 24px; margin: 0; padding: 2px;
+  border: 0; border-radius: 4px; background: transparent; color: inherit;
+  font: inherit; line-height: inherit; white-space: nowrap; cursor: pointer;
+}
+.zao-operation button:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
+.zao-operation button:active { background: color-mix(in srgb, currentColor 16%, transparent); }
+.zao-operation button:focus-visible { outline: 2px solid var(--zen-primary-color, AccentColor); outline-offset: 1px; }
+.zao-operation button:disabled { opacity: .55; cursor: default; }
+.zao-operation .zao-operation-close { width: 24px; padding: 4px; }
+.zao-operation-close svg { width: 12px; height: 12px; pointer-events: none; }
 .zao-operation [hidden] { display: none !important; }
-.zao-notice { inset-inline-start: auto; inset-inline-end: 16px; }
+@keyframes zao-feedback-appear { from { opacity: .5; } to { opacity: 1; } }
+@keyframes zao-feedback-work { to { rotate: 360deg; } }
 @media (prefers-reduced-motion: reduce) {
-  #tab-wand-button, #tab-wand-button *, .zao-spinner, .zao-sort-highlight { animation: none !important; transition: none !important; }
+  .zao-operation, .zao-operation *, #tab-wand-button, #tab-wand-button *,
+  .zao-spinner, .zao-sort-highlight { animation: none !important; transition: none !important; }
 }

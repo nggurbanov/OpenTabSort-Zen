@@ -117,8 +117,8 @@ export const previewCategories = (categories, signal) => new Promise((resolve) =
   try { modal.showModal(); } catch { finish(null); }
 });
 
-export const showJevProgress = (onStop, onUndo) => showSortProgress({
-  onStop, onUndo, stage: "Preparing categories…", className: "zao-jev-progress",
+export const showJevProgress = (onStop, onUndo, onSetup) => showSortProgress({
+  onStop, onUndo, onSetup, stage: "Preparing categories…", className: "zao-jev-progress",
 });
 
 export const highlightSortedTab = (tab) => {

@@ -10,7 +10,6 @@ colors:
   field-text: "FieldText"
   operation-surface: "var(--zen-colors-tertiary, Canvas)"
   operation-text: "var(--toolbar-color, CanvasText)"
-  operation-border: "var(--zen-colors-border, color-mix(in srgb, currentColor 25%, transparent))"
   control-border: "color-mix(in srgb, currentColor 25%, transparent)"
   section-divider: "color-mix(in srgb, currentColor 18%, transparent)"
   domain-chip-surface: "color-mix(in srgb, AccentColor 12%, transparent)"
@@ -32,7 +31,6 @@ typography:
     fontSize: "12px"
 rounded:
   control: "6px"
-  panel: "8px"
   review: "12px"
   decision-review: "16px"
   chip: "999px"
@@ -40,7 +38,6 @@ spacing:
   field-label-gap: "6px"
   action-gap: "10px"
   nested-gap: "12px"
-  panel-padding: "14px"
   connection-gap: "16px"
   intro-after: "24px"
   advanced-before: "28px"
@@ -51,12 +48,12 @@ components:
     typography: "{typography.body}"
     rounded: "{rounded.control}"
     padding: "7px 10px"
-  operation-panel:
-    backgroundColor: "{colors.operation-surface}"
+  operation-row:
+    backgroundColor: "transparent"
     textColor: "{colors.operation-text}"
-    rounded: "{rounded.panel}"
-    padding: "{spacing.panel-padding}"
-    width: "min(360px, calc(100vw - 32px))"
+    rounded: "{rounded.control}"
+    padding: "2px 4px"
+    minHeight: "32px"
   domain-chip:
     backgroundColor: "{colors.domain-chip-surface}"
     typography: "{typography.rule-chip}"
@@ -77,16 +74,16 @@ components:
 
 OpenTabSort is a utility inside Zen browser chrome. Its established visual system inherits the host theme, system controls, and platform typography. It uses compact fields, restrained borders, and readable status messages rather than a separate brand palette.
 
-The small AI setup and operation panel share this native character with the retained editors. Provider-specific fields appear when relevant; advanced tools sit behind a native disclosure. Theme adaptation comes from CSS system colors and Zen variables, not fixed light/dark screen palettes.
+The small AI setup and compact sidebar row share this native character with the retained editors. Provider-specific fields appear when relevant; advanced tools sit behind a native disclosure. Theme adaptation comes from CSS system colors and Zen variables, not fixed light/dark screen palettes.
 
 **Key Characteristics:**
 
 - Host-controlled colors and typography.
 - Compact controls with explicit keyboard focus.
-- A quiet settings surface and persistent operation feedback.
+- A quiet settings surface and contextual sidebar feedback.
 - Native dialogs and disclosure, with bounded widths and wrapping content.
 
-This is an extraction of the current implementation, not a new identity. Sources are [userChrome.css](userChrome.css), [operation styles](styles/operations.css), [simple settings](modules/simple-settings.mjs), [operation UI](modules/operation-ui.mjs), and [review dialogs](modules/preview-modal.mjs). The final settings receipt is `/tmp/opentabsort-simple-ui-final/metadata.json` (2026-10-28 04:09:34 UTC); it covers light, dark, narrow, and expanded states.
+This is an extraction of the current implementation, not a new identity. Sources are [userChrome.css](userChrome.css), [operation styles](styles/operations.css), [simple settings](modules/simple-settings.mjs), [operation UI](modules/operation-ui.mjs), and [review dialogs](modules/preview-modal.mjs). The 2.0.0 settings receipt remains `/tmp/opentabsort-simple-ui-final/metadata.json` (2026-10-28 04:09:34 UTC). The 2.0.1 sidebar receipt is `/tmp/opentabsort-tidy-ui/metadata.json` (04:51:32 UTC), covering native light, dark, narrow, keyboard, dismissal, and reduced-motion behavior. [Follow-up verification](docs/tidy-verification.md) records the limits and later wording changes.
 
 ## Colors
 
@@ -94,14 +91,14 @@ The palette belongs to Zen and the operating system. The frontmatter preserves C
 
 ### Primary
 
-- **Host accent** marks keyboard focus, progress, and domain chips. The operation panel prefers Zen's primary variable and falls back to the system accent.
+- **Host accent** marks keyboard focus and domain chips. Feedback focus prefers Zen's primary variable and falls back to the system accent.
 - **Title-chip accent** is the existing violet marker for title rules in Advanced. It is a chip distinction, not an application brand color.
 
 ### Neutral
 
 - **Canvas / Canvas text** keep modal review opaque and readable, including platforms with translucent browser chrome.
 - **Field / Field text** style native-looking connection inputs and selects.
-- **Operation surface / text / border** inherit Zen's tertiary surface, toolbar text, and border variables, with system-color fallbacks.
+- **Operation text** inherits Zen's toolbar text. The sidebar row is transparent; only the fallback overlay uses Zen's tertiary surface, with a system-color fallback.
 - **Control border / section divider** use low-opacity mixes of the current foreground to adapt to the host theme.
 - **Category error** uses the existing light/dark error pair in the advanced category editor.
 
@@ -115,7 +112,7 @@ Settings inherit the host interface font. Operation feedback uses the platform `
 
 The setup title is the only large heading in the compact primary form. Field labels, suggestion legends, and the Advanced summary use semibold weight. Helper text and operation messages use relaxed line heights for multi-line reading. Exact observed type tokens are in the frontmatter; there is no display-font tier or external font asset.
 
-**The Host Type Rule.** Inherit Zen's interface font; use the platform menu font for the operation panel and the existing monospace stack for rule chips.
+**The Host Type Rule.** Inherit Zen's interface font; use the platform menu font for the operation row and the existing monospace stack for rule chips.
 
 ## Layout
 
@@ -123,19 +120,19 @@ The Sine settings dialog is bounded by `min(720px, calc(100vw - 32px))`, with th
 
 The Advanced disclosure has a top divider and (28px) separation. Its retained preference rows stack into one column; the older rule grid reflows at (700px), placing domain chips below the rule name. The existing smaller action-row breakpoint is (520px).
 
-The operation panel sits (16px) from the inline start and bottom of the browser viewport. Its width is bounded by the operation-panel token; buttons wrap, messages break long text, and progress spans the panel. Notifications use the opposite inline edge.
+The operation row lives directly beneath the wand separator within the sidebar. It is (32px) high, with (2px 4px) padding and (4px) gaps; width follows the available sidebar. Status stays on one line with ellipsis, and contextual controls remain visible. The full text is available through the status tooltip and accessible label. If no sidebar anchor is available, a fallback overlay is bounded to `min(300px, calc(100vw - 16px))` near the wand.
 
 The final native UI receipt reports no horizontal overflow in the primary form at a (446 × 984px) viewport. This is a verified fixture size, not a supported-device matrix.
 
 ## Elevation & Depth
 
-The setup form stays flat within Sine's own dialog surface. Borders separate fields and Advanced; there are no decorative section cards in the primary form. The operation panel has a small shadow (`0 2px 8px rgb(0 0 0 / 15%)`). The chat/local review dialog uses the existing modal shadow (`0 14px 48px rgba(0, 0, 0, 0.35)`) and dark backdrop (`rgba(0, 0, 0, 0.45)`). Decision category review uses a native dialog and its own existing backdrop.
+The setup form stays flat within Sine's own dialog surface. Borders separate fields and Advanced; there are no decorative section cards in the primary form. The sidebar row has no border, filled surface, or shadow. Only the fallback overlay has a small shadow (`0 2px 8px rgb(0 0 0 / 15%)`). The chat/local review dialog uses the existing modal shadow (`0 14px 48px rgba(0, 0, 0, 0.35)`) and dark backdrop (`rgba(0, 0, 0, 0.45)`). Decision category review uses a native dialog and its own existing backdrop.
 
-**The Purposeful Lift Rule.** Use the small operation shadow for transient feedback and the larger existing shadow for modal review; keep the setup form flat.
+**The Purposeful Lift Rule.** Keep the sidebar row and setup form flat. Reserve the small shadow for fallback overlays and the larger existing shadow for modal review.
 
 ## Shapes
 
-Fields use softly rounded control corners; operation panels use the panel radius. Chat/local review and Decision review retain their distinct existing dialog radii. Saved domain/title chips remain pills and are confined to the editors and review surfaces that use them. Containers and controls use thin (1px) adaptive borders rather than decorative outlines.
+Fields and the operation row use softly rounded (6px) control corners; row actions use (4px) corners. Chat/local review and Decision review retain their distinct existing dialog radii. Saved domain/title chips remain pills and are confined to the editors and review surfaces that use them. Containers and controls use thin (1px) adaptive borders rather than decorative outlines.
 
 ## Components
 
@@ -149,11 +146,15 @@ The unconfigured state shows one engine selector. Remote setup adds the applicab
 
 A native `details/summary` control supplies keyboard interaction and open/closed semantics. Its summary is semibold with (14px) vertical padding. Content is hidden while collapsed; expensive editors initialize on first expansion. It returns to the primary view when setup is reopened.
 
-### Operation panel and action buttons
+### Sidebar feedback and contextual actions
 
-The native-looking panel contains a polite live status paragraph, progress, and real buttons. While planning, progress can be indeterminate; live Decision batches show determinate processed/total counts. Stop disables itself and changes status to “Stopping…”. On completion, progress and Stop hide; Undo appears when a valid receipt exists, and Dismiss becomes available. Connection failures can expose AI setup.
+The row contains a polite live status paragraph, a small busy indicator, and real HTML buttons. Stop appears while work runs; activating it disables the control and reports “Stopping…”. Completion replaces Stop with a valid Undo or the relevant Setup recovery action, plus an icon close button. Error labels are short (`AI offline`, `AI reply cut short`); complete recovery messages remain in the tooltip and accessible label. A successful primary run can say `300 tabs tidy`.
 
-Operation buttons use native appearance, inherited font, a minimum height of (30px), and (4px 10px) padding. Their explicit focus ring follows the host accent. Disabled Stop uses the native disabled treatment. Advanced action buttons retain their separate small, mixed-foreground background and hover treatment.
+Success feedback dismisses after five seconds, pausing during hover or keyboard focus. Dismissal removes only feedback, preserving a valid session Undo receipt. Setup errors stay until dismissed. Escape dismisses completed feedback; it does not conceal an active Stop control.
+
+Buttons inherit the host font and foreground, with transparent backgrounds, (24px) minimum height, and (2px) padding. Subtle foreground mixes indicate hover and press. A (2px) host-accent outline with (1px) offset marks keyboard focus; disabled Stop reduces opacity. The icon close button is (24px) square and has an explicit accessible name. These compact controls use HTML button keyboard semantics with browser-chrome styling.
+
+The essential operation CSS is embedded in the module and mirrored in `styles/operations.css`, so first feedback remains styled when Sine has not resolved the external sheet. Advanced action buttons retain their separate existing treatment.
 
 ### Rule chips
 
@@ -165,7 +166,9 @@ The existing native chat/local preview is bounded to the documented width and (8
 
 ### Motion
 
-The wand's existing click wiggle lasts (550ms); the thinking pulse repeats over (1.2s). Motion supports operation state. The shared operation stylesheet disables wand, spinner, and sort-highlight animation/transition when reduced motion is requested; Decision highlights also check that preference before running.
+The wand's existing click wiggle lasts (550ms); its thinking pulse repeats over (1.2s). Feedback enters over (120ms); its busy indicator rotates over (900ms). These indicate operation state without changing when AI work completes.
+
+After native placement, a bounded FLIP translation settles at most (40) visible rows over (260ms), using `cubic-bezier(0.16, 1, 0.3, 1)`. It adds no artificial wait and does not animate hundreds of off-screen tabs. Independent translation on the native tab stack preserves Zen's transforms and inline styles. Scrolling, workspace change, a new run, or teardown cancels optional motion. Reduced motion skips placement effects and disables wand, feedback, spinner, and sort-highlight animations/transitions; Decision highlights also check the preference.
 
 ## Do's and Don'ts
 
@@ -173,12 +176,12 @@ The wand's existing click wiggle lasts (550ms); the thinking pulse repeats over 
 
 - **Do** inherit system colors and Zen variables so the user's theme stays authoritative.
 - **Do** retain visible focus, native labels, masked API-key fields, and polite status announcements.
-- **Do** use the documented control, panel, and review shapes for their existing roles.
-- **Do** let fields, action rows, and long status text wrap within the host dialog.
+- **Do** use the documented control, row, and review shapes for their existing roles.
+- **Do** let settings fields and action rows wrap within the host dialog; keep sidebar feedback to one line with its full accessible message.
 
 ### Don't:
 
 - **Don't** replace the inherited theme with a new fixed brand palette or downloadable font.
 - **Don't** promote advanced rule chips or category editors into the simple connection form.
-- **Don't** hide an active operation or remove Stop/Undo feedback to make the surface look quieter.
+- **Don't** hide an active Stop control or delete the session Undo receipt when feedback disappears.
 - **Don't** present decorative motion when reduced motion is requested.

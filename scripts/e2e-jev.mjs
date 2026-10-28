@@ -101,7 +101,7 @@ try {
   `);
   const undo = async () => client.execute(`
     const win = Services.wm.getMostRecentWindow("navigator:browser");
-    [...win.document.querySelectorAll(".zao-jev-progress button")].find((button) => button.textContent === "Undo sort")?.click();
+    [...win.document.querySelectorAll(".zao-jev-progress button")].find((button) => button.dataset.action === "undo")?.click();
     return { state: win.__jevState(), original: win.__jevOriginal, hasProgress: !!win.document.querySelector(".zao-jev-progress"),
       collapsed: win.document.querySelector('tab-group[label="Original manual group"]')?.collapsed };
   `);
@@ -125,7 +125,7 @@ try {
   const stopped = await run("stop"); assert.equal(stopped.requests, 2); assert.match(stopped.status, /stopped/);
   const stopUndo = await undo(); assert.deepEqual(stopUndo.state, stopUndo.original);
   console.log("stop: completed first batch retained and undoable");
-  const auth = await run("auth"); assert.equal(auth.requests, 2); assert.match(auth.status, /401/);
+  const auth = await run("auth"); assert.equal(auth.requests, 2); assert.match(auth.status, /access was rejected.*key/i);
   const authUndo = await undo();
   assert.deepEqual(authUndo.state, authUndo.original);
   console.log("authentication failure: completed first batch retained and undoable");
@@ -176,7 +176,7 @@ try {
     const saved = Services.prefs.getStringPref("extensions.zen-auto-organize.ai-jev-categories-json", "{}");
     win.OpenTabSortZen.handleOrganizeClick().then(() => {
       const afterSaved = Services.prefs.getStringPref("extensions.zen-auto-organize.ai-jev-categories-json", "{}");
-      [...win.document.querySelectorAll(".zao-sort-progress button")].find((node) => node.textContent === "Undo sort" && !node.hidden)?.click();
+      [...win.document.querySelectorAll(".zao-sort-progress button")].find((node) => node.dataset.action === "undo" && !node.hidden)?.click();
       done({ preserved: saved === afterSaved, before, restored: win.__jevState() });
     }).catch((error) => done({ error: String(error) }));
   `);

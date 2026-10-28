@@ -61,7 +61,7 @@ const appendPath = (endpoint, path) => {
   return trimmed.endsWith(path) ? trimmed : `${trimmed}${path}`;
 };
 
-const boundMaxTokens = (value) => Math.min(Math.max(Number.isFinite(value) ? Math.trunc(value) : 800, 64), 4096);
+const boundMaxTokens = (value) => Math.min(Math.max(Number.isFinite(value) ? Math.trunc(value) : 800, 64), 8192);
 
 const parseJson = (text) => {
   try {

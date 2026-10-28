@@ -5,6 +5,7 @@ import { getAIExistingBehavior, getAINewGroupBehavior, persistAIRules } from "./
 import { findExistingGroup, expandIfCollapsed, collapseGroup, applyGroupAppearance, applyGroupColor, findSafeInsertAnchor } from "./groups.mjs";
 import { normalizeCase, ensureUniqueGroupNames } from "./dedupe.mjs";
 import { capturePlacement, restorePlacement } from "./apply-placement.mjs";
+import { captureTidyMotion } from "./tidy-motion.mjs";
 
 const existingGroupNames = (workspaceId) => Array.from(document.querySelectorAll?.(
   workspaceId ? `tab-group:has(tab[zen-workspace-id="${workspaceId}"])` : "tab-group"
@@ -86,7 +87,7 @@ const workspaceCategoryColor = (name) => {
   return PRESET_COLORS[hash % PRESET_COLORS.length].name;
 };
 
-export const applyPass2 = (pass2Result, workspaceId, rules, options = {}) => {
+const applyPass2Native = (pass2Result, workspaceId, rules, options = {}) => {
   const workspaceAI = options.workspaceAI === true;
   const existingBehavior = workspaceAI ? "transient" : options.existingBehavior || getAIExistingBehavior();
   const newGroupBehavior = workspaceAI ? "transient" : options.newGroupBehavior || getAINewGroupBehavior();
@@ -263,4 +264,18 @@ export const applyPass2 = (pass2Result, workspaceId, rules, options = {}) => {
   if (persistRules && (rulesGrown > 0 || titleTermsGrown > 0 || newRulesCreated > 0)) persistAIRules(rules);
 
   return { movedToExisting, rulesGrown, titleTermsGrown, newGroupsCreated, newRulesCreated, errors, failedTabs };
+};
+
+// Sorting remains synchronous. Only the visible final layout is animated;
+// callers can show completion or offer Undo without waiting for the effect.
+export const applyPass2 = (pass2Result, workspaceId, rules, options = {}) => {
+  const motion = captureTidyMotion(workspaceId);
+  try {
+    const result = applyPass2Native(pass2Result, workspaceId, rules, options);
+    motion.play();
+    return result;
+  } catch (error) {
+    motion.cancel();
+    throw error;
+  }
 };

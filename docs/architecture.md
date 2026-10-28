@@ -18,7 +18,7 @@ AI engines, previews, the legacy orchestrator, and the advanced rule/icon editor
 
 1. Check the chosen engine, connection readiness, and required consent. An unconfigured click opens setup without an AI request.
 2. Capture active-workspace tab references, relevant settings, native layout, and eligible-tab membership. Filter excluded domains without moving them.
-3. Start a cancellable `sort-session.mjs` operation with visible progress.
+3. Start a cancellable `sort-session.mjs` operation with compact sidebar feedback.
 4. Produce a transient plan using the selected engine.
 5. Optionally review the plan when `ai-review-before-apply` is enabled; it defaults to false.
 6. Recheck the captured state and validate that assignments reference eligible original tabs only once.
@@ -28,11 +28,17 @@ Saved matching rules, saved category lists, and advanced persistence settings do
 
 ### Chat and Ollama planning
 
-`ai-workspace-plan.mjs` produces one shared category vocabulary from the entire eligible workspace inventory. `jev-categories.mjs` bounds large inventories through partial suggestions and a reduction step. Classification then uses the same category IDs in batches of up to 75 tabs; existing retry helpers shrink or repair malformed/incomplete responses within bounded attempts.
+`ai-workspace-plan.mjs` sends one workspace-wide grouping request for normal inventories of up to 300 eligible tabs. The complete prompt is capped at 72 KiB of UTF-8, with byte-bounded titles and hostname/path text and a deduplicated table of existing group names. The model returns groups containing local numeric tab indices, plus explicit unresolved indices. The prompt favors a few meaningful groups, short names, and reuse of existing names.
+
+Index validation never identifies tabs by duplicate titles, URLs, or external IDs. Unknown or invalid indices are ignored; omissions and contradictory claims across groups remain unresolved. Unsupported or malformed grouping responses and request failures preserve the whole layout and return actionable failure details without starting a second full request. The planner neither mutates tabs nor writes saved rules/categories.
+
+Inventories above 300 tabs, or whose minimum compact prompt still exceeds the byte budget, retain the prior taxonomy path. `jev-categories.mjs` bounds large inventories through partial suggestions and global reduction. Classification then uses the same category IDs in batches of up to 75 tabs; existing retry helpers repair malformed/incomplete batch responses within bounded attempts. `strategy: "taxonomy"` explicitly selects this protocol for regression coverage.
 
 Inputs are compact titles, hostname/path context, and current group labels. URL credentials, query strings, fragments, control characters, and directional formatting characters are removed before prompt construction. Page metadata is treated as untrusted data. This path fetches no tab pages and loads no local embedding model.
 
 Planning returns existing-group assignments, new groups, and unresolved tabs. Missing or invalid assignments never fabricate tab references. Unresolved tabs retain their original membership.
+
+Primary planner requests allow up to 8192 output tokens. This accommodates reasoning models whose thinking and answer share an output budget; it does not guarantee model latency or disable mandatory reasoning. Provider parsing distinguishes exhausted output limits, empty answers, malformed JSON, and rejected requests. `sort-failure.mjs` maps failures to short recovery labels and full accessible messages; sanitized technical details remain available for diagnostics. See the [configured-model probe](tidy-verification.md#configured-model-output-budget) for the measured case.
 
 ### Built-in local planning
 
@@ -51,6 +57,10 @@ The decision provider classifies bounded batches against that category vocabular
 Chat, Ollama, built-in local, and advanced rule sorting plan before applying. Stop during planning leaves layout unchanged. Decision sorting is incremental, so it keeps completed moves and offers Undo.
 
 `apply-placement.mjs` handles native move failures and attempts to restore the affected placement. `apply-plan.mjs` is shared by the primary and advanced orchestrators. Sorting moves original tab nodes; it does not close and recreate their browsing state.
+
+`operation-ui.mjs` injects its essential styles directly, so first feedback does not depend on Sine resolving an external sheet. The default surface is a transparent 32px sidebar row under the wand separator; a bounded overlay is used only when no suitable sidebar anchor exists. It shows Stop while busy and contextual Undo or Setup afterward. Successful rows dismiss after five seconds, pausing while hovered or focused. Error rows offering setup remain until dismissed. Removing feedback cleans up timers/listeners without deleting the Undo receipt.
+
+`tidy-motion.mjs` captures only eligible visible rows before native placement, then plays a bounded FLIP translation after placement: at most 40 rows, 260ms, no awaited delay. It animates independent translation on the tab stack where available, preserving Zen's transforms and inline styles. Reduced motion, scrolling or workspace changes, existing conflicting translation, teardown, and another run cancel or skip the optional effect. Placement correctness is independent of animation support.
 
 `tab-history.mjs` records one native layout receipt per completed operation. It restores membership, order, group appearance, and collapse state during the browser session. Undo checks the current layout before restoring and rejects a conflicting manual edit. It is not persisted as a cross-restart history.
 
@@ -91,4 +101,4 @@ The extracted host-theme tokens and component states are documented in [DESIGN.m
 
 ## Verification
 
-Use `npm run check` for manifest/preference/privacy validation and regression tests. [Real Zen checks](e2e-zen.md) exercise Sine-loaded native behavior in disposable profiles. [Overhaul measurements](overhaul-verification.md) distinguish fixture correctness, static import size, transfer budgets, and unmeasured live-model/RSS behavior.
+Use `npm run check` for manifest/preference/privacy validation and regression tests. [Real Zen checks](e2e-zen.md) exercise Sine-loaded native behavior in disposable profiles. [The 2.0.0 overhaul record](overhaul-verification.md) preserves the earlier fixture/import/transfer measurements. [The 2.0.1 follow-up](tidy-verification.md) records native sidebar/motion behavior, one-request grouping, and the bounded configured-model output-budget probe. Neither record establishes long-session RSS or general model quality.

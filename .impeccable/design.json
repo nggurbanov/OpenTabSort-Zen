@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-28T04:15:09Z",
+  "generatedAt": "2026-10-28T04:58:15Z",
   "title": "Design System: OpenTabSort Zen",
   "extensions": {
     "colorMeta": {
@@ -35,10 +35,6 @@
       "operation-text": {
         "role": "neutral",
         "displayName": "Zen operation text"
-      },
-      "operation-border": {
-        "role": "neutral",
-        "displayName": "Zen operation border"
       },
       "control-border": {
         "role": "neutral",
@@ -91,7 +87,7 @@
       {
         "name": "operation",
         "value": "0 2px 8px rgb(0 0 0 / 15%)",
-        "purpose": "Transient operation feedback."
+        "purpose": "Fallback overlay only; the normal sidebar row is flat and transparent."
       },
       {
         "name": "review",
@@ -111,9 +107,24 @@
         "purpose": "Existing thinking pulse."
       },
       {
+        "name": "feedback-enter",
+        "value": "120ms ease-out",
+        "purpose": "Compact row appears without delaying work."
+      },
+      {
+        "name": "feedback-busy",
+        "value": "900ms linear infinite",
+        "purpose": "Small busy indicator."
+      },
+      {
+        "name": "tidy-placement",
+        "value": "260ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Optional FLIP translation on at most 40 visible rows after native placement; no awaited delay."
+      },
+      {
         "name": "reduced-motion",
         "value": "animation: none; transition: none",
-        "purpose": "Disable wand, spinner and sort-highlight motion when requested."
+        "purpose": "Disable chrome feedback motion and skip placement effects when requested."
       }
     ],
     "breakpoints": [
@@ -131,9 +142,9 @@
     {
       "name": "Native operation button",
       "kind": "button",
-      "description": "Native Stop/Undo/Dismiss actions; hover and disabled styling come from the platform.",
+      "description": "Compact Stop/Undo/Setup HTML buttons with native keyboard semantics and host-theme browser-chrome styling.",
       "html": "<button class=\"ds-operation-button\" type=\"button\">Stop</button>",
-      "css": ".ds-operation-button { appearance: auto; font: inherit; min-height: 30px; padding: 4px 10px; cursor: pointer; } .ds-operation-button:focus-visible { outline: 2px solid var(--zen-primary-color, AccentColor); outline-offset: 2px; }"
+      "css": ".ds-operation-button { appearance: none; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; min-width: 0; min-height: 24px; margin: 0; padding: 2px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; line-height: inherit; white-space: nowrap; cursor: pointer; } .ds-operation-button:hover { background: color-mix(in srgb, currentColor 10%, transparent); } .ds-operation-button:active { background: color-mix(in srgb, currentColor 16%, transparent); } .ds-operation-button:focus-visible { outline: 2px solid var(--zen-primary-color, AccentColor); outline-offset: 1px; } .ds-operation-button:disabled { opacity: .55; cursor: default; }"
     },
     {
       "name": "Connection field",
@@ -167,12 +178,12 @@
       "css": ".ds-domain-chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 2px 2px 5px; background: color-mix(in srgb, AccentColor 12%, transparent); border: 1px solid color-mix(in srgb, AccentColor 30%, transparent); border-radius: 999px; font-size: 12px; font-family: ui-monospace, \"SF Mono\", Menlo, Consolas, monospace; white-space: nowrap; max-width: 100%; cursor: grab; user-select: none; } .ds-domain-chip:active { cursor: grabbing; } .ds-chip-remove { appearance: none; background: transparent; border: none; color: inherit; width: 16px; height: 16px; min-width: 16px; border-radius: 50%; cursor: pointer; font-size: 12px; line-height: 1; padding: 0; margin: 0; opacity: .55; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; } .ds-chip-remove:hover { opacity: 1; background: color-mix(in srgb, currentColor 18%, transparent); }"
     },
     {
-      "name": "Operation panel",
-      "kind": "card",
-      "refersTo": "operation-panel",
-      "description": "Visual specimen of the feedback panel; app positioning is omitted in the specimen. Live app states show Stop, valid Undo, setup recovery and Dismiss as applicable.",
-      "html": "<section class=\"ds-operation\" aria-label=\"Tab sorting\"><p class=\"ds-message\" role=\"status\" aria-live=\"polite\">Finding useful groups for 300 tabs…</p><progress aria-label=\"Tab sorting progress\"></progress><button class=\"ds-operation-button\" type=\"button\">Stop</button></section>",
-      "css": ".ds-operation { box-sizing: border-box; width: min(360px, calc(100vw - 32px)); padding: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--toolbar-color, CanvasText); background: var(--zen-colors-tertiary, Canvas); border: 1px solid var(--zen-colors-border, color-mix(in srgb, currentColor 25%, transparent)); border-radius: 8px; font: menu; box-shadow: 0 2px 8px rgb(0 0 0 / 15%); } .ds-message { flex: 1 1 100%; margin: 0; line-height: 1.5; overflow-wrap: anywhere; } .ds-operation progress { width: 100%; accent-color: var(--zen-primary-color, AccentColor); } .ds-operation-button { appearance: auto; font: inherit; min-height: 30px; padding: 4px 10px; cursor: pointer; } .ds-operation-button:focus-visible { outline: 2px solid var(--zen-primary-color, AccentColor); outline-offset: 2px; }"
+      "name": "Sidebar operation row",
+      "kind": "custom",
+      "refersTo": "operation-row",
+      "description": "32px transparent native sidebar feedback. Busy shows Stop; completion shows contextual Undo or Setup. Success dismisses after five seconds, pausing on hover/focus; the session Undo receipt survives visual dismissal.",
+      "html": "<section class=\"ds-operation\" aria-label=\"Tab sorting\"><svg class=\"ds-operation-indicator\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" aria-hidden=\"true\"><path d=\"M8 2a6 6 0 1 1-6 6\"/></svg><p class=\"ds-message\" role=\"status\" aria-live=\"polite\" title=\"Tidying 300 tabs…\" aria-label=\"Tidying 300 tabs…\">Tidying 300 tabs…</p><button class=\"ds-operation-button\" type=\"button\">Stop</button></section>",
+      "css": ".ds-operation { box-sizing: border-box; display: flex; align-items: center; min-width: 0; min-height: 32px; gap: 4px; padding: 2px 4px; border: 0; border-radius: 6px; color: var(--toolbar-color, CanvasText); background: transparent; font: menu; font-size: 12px; line-height: 1.3; text-align: start; } .ds-message { flex: 1 1 auto; min-width: 0; margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; } .ds-operation-indicator { flex: none; width: 12px; height: 12px; } .ds-operation-button { appearance: none; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; min-width: 0; min-height: 24px; margin: 0; padding: 2px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; line-height: inherit; white-space: nowrap; cursor: pointer; } .ds-operation-button:hover { background: color-mix(in srgb, currentColor 10%, transparent); } .ds-operation-button:active { background: color-mix(in srgb, currentColor 16%, transparent); } .ds-operation-button:focus-visible { outline: 2px solid var(--zen-primary-color, AccentColor); outline-offset: 1px; } .ds-operation-button:disabled { opacity: .55; cursor: default; }"
     },
     {
       "name": "Native review surface",
@@ -185,11 +196,11 @@
   ],
   "narrative": {
     "northStar": "Native Zen utility",
-    "overview": "OpenTabSort is a utility inside Zen browser chrome. Its established visual system inherits the host theme, system controls, and platform typography. It uses compact fields, restrained borders, and readable status messages rather than a separate brand palette.\n\nThe small AI setup and operation panel share this native character with the retained editors. Provider-specific fields appear when relevant; advanced tools sit behind a native disclosure. Theme adaptation comes from CSS system colors and Zen variables, not fixed light/dark screen palettes.",
+    "overview": "OpenTabSort is a utility inside Zen browser chrome. Its established visual system inherits the host theme, system controls, and platform typography. It uses compact fields, restrained borders, and readable status messages rather than a separate brand palette.\n\nThe small AI setup and compact sidebar row share this native character with the retained editors. Provider-specific fields appear when relevant; advanced tools sit behind a native disclosure. Theme adaptation comes from CSS system colors and Zen variables, not fixed light/dark screen palettes.",
     "keyCharacteristics": [
       "Host-controlled colors and typography.",
       "Compact controls with explicit keyboard focus.",
-      "A quiet settings surface and persistent operation feedback.",
+      "A quiet settings surface and contextual sidebar feedback.",
       "Native dialogs and disclosure, with bounded widths and wrapping content."
     ],
     "rules": [
@@ -200,25 +211,25 @@
       },
       {
         "name": "Host Type",
-        "body": "Inherit Zen's interface font; use the platform menu font for the operation panel and the existing monospace stack for rule chips.",
+        "body": "Inherit Zen's interface font; use the platform menu font for the operation row and the existing monospace stack for rule chips.",
         "section": "typography"
       },
       {
         "name": "Purposeful Lift",
-        "body": "Use the small operation shadow for transient feedback and the larger existing shadow for modal review; keep the setup form flat.",
+        "body": "Keep the sidebar row and setup form flat; reserve the small shadow for fallback overlays and the larger existing shadow for modal review.",
         "section": "elevation"
       }
     ],
     "dos": [
       "Do inherit system colors and Zen variables so the user's theme stays authoritative.",
       "Do retain visible focus, native labels, masked API-key fields, and polite status announcements.",
-      "Do use the documented control, panel, and review shapes for their existing roles.",
-      "Do let fields, action rows, and long status text wrap within the host dialog."
+      "Do use the documented control, row, and review shapes for their existing roles.",
+      "Let settings fields and action rows wrap within the dialog; keep sidebar feedback to one line with full tooltip and accessible text."
     ],
     "donts": [
       "Don't replace the inherited theme with a new fixed brand palette or downloadable font.",
       "Don't promote advanced rule chips or category editors into the simple connection form.",
-      "Don't hide an active operation or remove Stop/Undo feedback to make the surface look quieter.",
+      "Don't hide an active Stop control or delete the session Undo receipt when feedback disappears.",
       "Don't present decorative motion when reduced motion is requested."
     ]
   }

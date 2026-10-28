@@ -209,23 +209,47 @@ const clusterUnmatchedNewGroups = async (leftover, settings) => {
 
 export const providerJson = async (settings, prompt, maxTokens = PROVIDER_JSON_MAX_TOKENS, signal) => {
   const responseText = await providerText(settings, prompt, maxTokens, signal);
+  return parseAnswerObject(responseText);
+};
+
+// Chat-compatible models sometimes add a fence or a short explanation even
+// when asked for JSON. Accept one complete answer, never stitch truncated
+// fragments together or choose between competing plans.
+const parseAnswerObject = (text) => {
+  let raw = String(text || "").trim()
+    .replace(/^(?:\s*<(think|analysis)>[\s\S]*?<\/\1>)+\s*/i, "");
+  const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenced) raw = fenced[1].trim();
   let parsed;
-  try {
-    parsed = JSON.parse(extractJsonObjectText(responseText));
-  } catch {
-    throw new Error("Provider returned non-JSON content");
+  try { parsed = JSON.parse(raw); }
+  catch {
+    const candidates = [];
+    let start = -1, depth = 0, quoted = false, escaped = false;
+    for (let index = 0; index < raw.length; index++) {
+      const char = raw[index];
+      if (depth === 0) {
+        if (char === "{") { start = index; depth = 1; }
+        continue;
+      }
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === '"') quoted = false;
+      } else if (char === '"') quoted = true;
+      else if (char === "{") depth++;
+      else if (char === "}" && --depth === 0) {
+        try { candidates.push(JSON.parse(raw.slice(start, index + 1))); } catch {}
+      }
+    }
+    if (candidates.length !== 1 || depth !== 0 || raw.startsWith("[")) {
+      throw new Error(candidates.length > 1 ? "Provider returned ambiguous JSON answers" : "Provider returned non-JSON content");
+    }
+    [parsed] = candidates;
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Provider returned non-object JSON");
   }
   return parsed;
-};
-
-const extractJsonObjectText = (text) => {
-  const raw = String(text || "").trim();
-  const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  if (fenced) return fenced[1].trim();
-  return raw;
 };
 
 const providerText = async (settings, prompt, maxTokens, signal = getActiveSortSignal()) => {
@@ -248,6 +272,29 @@ const providerText = async (settings, prompt, maxTokens, signal = getActiveSortS
       throw error;
     }
     const body = await response.text();
+    let envelope;
+    try { envelope = JSON.parse(body); } catch {}
+    // Some compatible gateways put API errors in a successful HTTP response.
+    // Preserve the safe status, never their arbitrary echoed message/body.
+    if (envelope?.error) {
+      const status = Number(envelope.error.code);
+      const safeStatus = Number.isInteger(status) && status >= 400 && status <= 599 ? status : null;
+      const error = new Error(safeStatus ? `HTTP ${safeStatus}` : "Provider response reported an API error");
+      if (safeStatus) error.status = safeStatus;
+      error.terminal = true; error.retryable = false;
+      throw error;
+    }
+    const finish = envelope?.choices?.[0]?.finish_reason ?? envelope?.candidates?.[0]?.finishReason;
+    if (finish === "length" || finish === "MAX_TOKENS") {
+      const error = new Error("Provider response reached its output limit");
+      error.retryable = false;
+      throw error;
+    }
+    if (finish === "content_filter" || finish === "SAFETY" || envelope?.choices?.[0]?.message?.refusal) {
+      const error = new Error("Provider response was blocked");
+      error.retryable = false;
+      throw error;
+    }
     const text = parseProviderResponse(getProviderKind(settings), body);
     if (typeof text !== "string" || !text.trim()) throw new Error("Provider response did not contain text");
     return text.trim();

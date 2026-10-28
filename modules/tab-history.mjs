@@ -5,6 +5,7 @@ import { findSafeInsertAnchor, expandIfCollapsed, collapseGroup } from "./groups
 import { captureTabSnapshot, isTabSnapshotCurrent } from "./sort-plan.mjs";
 import { showToast } from "./ui-toast.mjs";
 import { getActiveSortSignal } from "./sort-session.mjs";
+import { cancelTidyMotion } from "./tidy-motion.mjs";
 const receipts = new WeakMap();
 export const clearSortUndo = () => receipts.delete(window);
 export const recordSortUndo = (original, { rulesBefore, rulesAfter, expectedLayout, workspaceId = window.gZenWorkspaces.activeWorkspace } = {}) => {
@@ -57,6 +58,7 @@ export const undoLastSort = () => {
     entry.position !== current[index]?.position || JSON.stringify(entry.appearance) !== JSON.stringify(current[index]?.appearance))) {
     showToast("The tab layout changed after sorting; undo would overwrite those changes."); return;
   }
+  cancelTidyMotion(window);
   const restoredGroups = new Map();
   for (const entry of original) {
     // Empty native groups can still be connected while Firefox's queued

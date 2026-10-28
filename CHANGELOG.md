@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.1 — Planned / Unreleased
+
+- Replace the floating progress panel with a quiet 32px row in Zen's sidebar. Keep contextual Stop, Undo, Setup, and keyboard dismissal; retain full status in the tooltip and accessible label.
+- Dismiss successful feedback after five seconds, pausing while hovered or focused. Visual dismissal retains the valid session Undo receipt; connection errors remain actionable.
+- Group normal workspaces of up to 300 tabs in one metadata-only request capped at 72 KiB. Keep the shared-taxonomy/batched path for larger inventories, and preserve unresolved or conflicting tab assignments in place.
+- Animate at most 40 visible rows for 260ms after native placement without delaying completion. Respect reduced motion and preserve Zen's transforms, selected tab, and scroll state.
+- Report provider access, network, malformed-response, and output-limit failures with actionable messages. Accept supported structured JSON response forms while keeping provider content out of user-facing error text.
+- Raise the primary planner's output budget to 8192 tokens. A bounded synthetic probe of the configured mandatory-reasoning model exhausted 4096 tokens without answer text and completed at 8192; mandatory reasoning is not disabled automatically.
+- Add native sidebar, Stop/Undo, placement motion, single-request identity, and provider-response regressions. See [the dated follow-up verification](docs/tidy-verification.md) for evidence and limits.
+
 ## 2.0.0 — Unreleased
 
 - Make the everyday wand AI-first: infer groups from the active workspace, then classify against a shared vocabulary in bounded batches. Saved rules and manual categories are no longer prerequisites.

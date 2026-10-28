@@ -51,3 +51,10 @@ test("Given malformed provider response When parsing Then parser fails closed", 
   assert.equal(parseProviderResponse("openai", JSON.stringify({ choices: [] })), null);
   assert.equal(parseProviderResponse("ollama", JSON.stringify({ response: "Tabs" })), "Tabs");
 });
+
+test("reasoning-model workspace plans have a bounded 8K output budget", () => {
+  const provider = { provider: "custom", format: "openai", endpoint: "https://api.example.test/v1", model: "reasoning" };
+  assert.equal(JSON.parse(buildProviderRequest(provider, "fixture", 8192).init.body).max_tokens, 8192);
+  assert.equal(JSON.parse(buildProviderRequest(provider, "fixture", 999999).init.body).max_tokens, 8192);
+  assert.equal(JSON.parse(buildProviderRequest(provider, "fixture", 4096).init.body).max_tokens, 4096);
+});

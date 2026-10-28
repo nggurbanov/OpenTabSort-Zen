@@ -2,6 +2,7 @@
 // Native operation controls and rollback acceptance in a disposable Sine profile.
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
+import { writeFile } from "node:fs/promises";
 import { createLabProfile, findDefaultSineProfile, removeLabProfile, scenarioPrefs, writeUserPrefs } from "./zen-e2e-profile.mjs";
 import { startFixturePageServer, startProviderServer } from "./zen-e2e-servers.mjs";
 import { createSemanticFixture } from "./zen-e2e-fixtures.mjs";
@@ -46,8 +47,8 @@ try {
     const win = Services.wm.getMostRecentWindow("navigator:browser");
     win.__qaMode = ${JSON.stringify(mode)}; win.__qaCalls = 0;
     win.OpenTabSortZen.handleOrganizeClick().then(() => done({ state: win.__qaState(), calls: win.__qaCalls,
-      status: win.document.querySelector(".zao-sort-progress [role=status]")?.textContent,
-      canUndo: [...win.document.querySelectorAll(".zao-sort-progress button")].some((node) => node.textContent === "Undo sort" && !node.hidden),
+      status: win.document.querySelector(".zao-sort-progress [role=status]")?.title,
+      canUndo: [...win.document.querySelectorAll(".zao-sort-progress button")].some((node) => node.dataset.action === "undo" && !node.hidden),
     })).catch((error) => done({ error: String(error) }));
   `);
   const original = await client.execute('return Services.wm.getMostRecentWindow("navigator:browser").__qaOriginal;');
@@ -60,6 +61,21 @@ try {
   }
   const sorted = await run("normal"); assert.equal(sorted.error, undefined); assert.equal(sorted.canUndo, true);
   assert.equal(new Set(sorted.state.map((tab) => tab.id)).size, original.length);
+  if (process.env.OPERATIONS_QA_SCREENSHOT) {
+    const geometry = await client.executeAsync(`
+      const done = arguments[arguments.length - 1], win = Services.wm.getMostRecentWindow("navigator:browser");
+      Promise.allSettled(win.document.getAnimations().filter((effect) => effect.effect?.target?.classList?.contains("tab-stack"))
+        .map((effect) => effect.finished)).then(() => {
+        const row = win.document.querySelector(".zao-sort-progress"), status = row.querySelector("[role=status]"), rect = row.getBoundingClientRect();
+        done({ height: rect.height, width: rect.width, placement: row.dataset.placement, label: status.textContent,
+          overflow: row.scrollWidth > row.clientWidth, statusOverflow: status.scrollWidth > status.clientWidth });
+      });
+    `);
+    assert.equal(geometry.placement, "sidebar"); assert.equal(geometry.height, 32);
+    assert.equal(geometry.overflow, false); assert.equal(geometry.statusOverflow, false);
+    await writeFile(process.env.OPERATIONS_QA_SCREENSHOT, Buffer.from(await client.command("WebDriver:TakeScreenshot", {}), "base64"));
+    await writeFile(process.env.OPERATIONS_QA_SCREENSHOT + ".json", JSON.stringify(geometry, null, 2));
+  }
   const noOp = await run("normal");
   assert.deepEqual(noOp.state, sorted.state); assert.equal(noOp.canUndo, true);
   assert.match(noOp.status, /already organized/);
@@ -69,7 +85,7 @@ try {
   console.log("stopped follow-up: previous valid Undo remains available");
   const undone = await client.execute(`
     const win = Services.wm.getMostRecentWindow("navigator:browser");
-    [...win.document.querySelectorAll(".zao-sort-progress button")].find((node) => node.textContent === "Undo sort").click();
+    [...win.document.querySelectorAll(".zao-sort-progress button")].find((node) => node.dataset.action === "undo").click();
     return { state: win.__qaState(), collapsed: win.document.querySelector('tab-group[label="My manual group"]')?.collapsed };
   `);
   assert.deepEqual(undone.state, original); assert.equal(undone.collapsed, true);

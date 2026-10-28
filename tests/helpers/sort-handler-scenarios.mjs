@@ -7,6 +7,8 @@ import fs from "node:fs";
 import vm from "node:vm";
 import { CONFIG } from "./modules/config.mjs";
 import { captureTabSnapshot, isTabSnapshotCurrent, validateAIPlan, reserveNewGroupNames } from "./modules/sort-plan.mjs";
+import { sortFailureNotice } from "./modules/sort-failure.mjs";
+import { safeProviderErrorMessage } from "./modules/safe-log.mjs";
 const scenario = process.argv[2], primary = process.argv[3] === "primary";
 const behavior = scenario.replace(/^primary-/, "");
 const state = { requests: 0, requestsAfterAbort: 0, apply: 0, mutations: 0, records: 0, imports: [], finishes: [], modalCalls: 0, errors: [], setupCalls: 0, ruleLoads: 0, plannerCalls: 0, pass1Calls: 0, legacyCalls: 0, toasts: [] };
@@ -48,6 +50,7 @@ const runProvider = async () => {
   if(behavior==="consent-revoked")notify(CONFIG.AI_PROVIDER_CONSENT_PREF,false);
   if(behavior==="tabs-changed")info.title="User changed the title";
   if(behavior==="stop-during-provider")controls.onStop();
+  if (behavior==="provider-failure") return {assignedToExisting:[],newGroups:[],skipped:[],unresolved:[info],failed:"HTTP 401"};
   return plan();
 };
 const dependencies = {
@@ -72,6 +75,8 @@ const dependencies = {
     controls.onStop();signal.throwIfAborted();return null;
   }},
   "./setup-navigation.mjs":{openAISetup:()=>state.setupCalls++},
+  "./sort-failure.mjs":{sortFailureNotice},
+  "./safe-log.mjs":{safeProviderErrorMessage},
   "./jev-categories.mjs":{readJevSettings:()=>({consent:true,endpoint:"https://decision.test",apiKey:"test",model:"test",categoryProvider:"openai"})},
   "./ai-workspace-plan.mjs":{planAIWorkspace:async(tabs,options)=>{state.plannerCalls++;state.plannedCount=tabs.length;state.plannerOptions={engine:options.engine};return runProvider();}},
   "./ai.mjs":{runPass2Fresh:async(tabs,rules)=>{state.localRules=rules;state.plannerCalls++;return runProvider();}},

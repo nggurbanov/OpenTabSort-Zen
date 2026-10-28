@@ -7,8 +7,11 @@ import { readProviderSettings } from "./provider-settings.mjs";
 import { getProviderReadiness } from "./provider-readiness.mjs";
 import { providerJson } from "./remote-provider.mjs";
 import { JevError, sortJevBatches, decisionEndpoint } from "./jev-provider.mjs";
-import { previewCategories, showJevProgress, highlightSortedTab } from "./jev-ui.mjs";
+import { previewCategories, showJevProgress } from "./jev-ui.mjs";
 import { showToast } from "./ui-toast.mjs";
+import { captureTidyMotion } from "./tidy-motion.mjs";
+import { sortFailureNotice } from "./sort-failure.mjs";
+import { openAISetup } from "./setup-navigation.mjs";
 import { captureLayout, recordSortUndo, undoLastSort, clearSortUndo, canUndoLastSort } from "./tab-history.mjs";
 
 let activeSort = null;
@@ -40,7 +43,7 @@ export const runJevSort = async ({ tabs, workspaceId, snapshot, sourceOverride, 
   const targets = new Map();
   const isCurrent = () => window.gZenWorkspaces?.activeWorkspace === workspaceId &&
     isTabSnapshotCurrent(expected, getEligibleTabs().tabs) && stamp === JSON.stringify(settingsStamp());
-  const ui = showJevProgress(stopJevSort, undoJevSort);
+  const ui = showJevProgress(stopJevSort, undoJevSort, openAISetup);
   const refresh = () => { expected = captureLayout(); };
   let moved = 0, changed = false;
   const move = ({ tabInfo, groupName }) => {
@@ -61,7 +64,7 @@ export const runJevSort = async ({ tabs, workspaceId, snapshot, sourceOverride, 
       group.setAttribute("zen-workspace-id", workspaceId);
       applyGroupColor(group, color); created.add(group);
     }
-    targets.set(groupName, group); highlightSortedTab(tab); moved++;
+    targets.set(groupName, group); moved++;
     return true;
   };
   try {
@@ -84,14 +87,17 @@ export const runJevSort = async ({ tabs, workspaceId, snapshot, sourceOverride, 
     const result = await sortJevBatches({ tabs: orderedTabs, categories, settings, signal: controller.signal, isCurrent,
       applyBatch: (assignments) => {
         let count = 0;
+        const motion = captureTidyMotion(workspaceId);
         try { for (const assignment of assignments) if (move(assignment)) count++; }
-        finally { window.gZenWorkspaces.updateTabsContainers?.(); refresh(); }
+        finally { window.gZenWorkspaces.updateTabsContainers?.(); refresh(); motion.play(); }
         return count;
       }, onProgress: ui.update,
     });
     ui.finish(`Sorted ${result.processed} tabs · ${moved} moved · ${result.skipped + result.unresolved} kept`, changed);
   } catch (error) {
-    const message = controller.signal.aborted ? "Sorting stopped. Completed moves were kept." : error instanceof JevError ? error.message : "Decision sorting could not finish. Check your provider settings.";
+    const message = controller.signal.aborted ? "Sorting stopped. Completed moves were kept." :
+      /Tabs or settings changed/.test(error.message) ? error.message : sortFailureNotice(error, "jev").message;
+    if (!controller.signal.aborted) ui.setupAvailable?.();
     console.warn(`${LOG} ${message}`); ui.finish(message, changed);
   } finally {
     const canUndo = recordSortUndo(original, { workspaceId, expectedLayout: expected, rulesBefore, rulesAfter: rulesBefore });

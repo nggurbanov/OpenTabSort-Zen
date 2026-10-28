@@ -43,7 +43,12 @@ const fakeProviderHandler = (calls) => async (request, response) => {
   calls.push({ provider: "fake", tabCount: lines.length, requestBytes: Buffer.byteLength(rawBody) });
   const content = String(body.messages?.[0]?.content || "");
   let assignments;
-  if (content.includes("Suggest 1 to 10 distinct, useful categories")) {
+  if (content.startsWith("AI WORKSPACE GROUPING")) {
+    assignments = { groups: GOLD_FAMILIES.map((name) => ({
+      name: `${name} AI`, description: `Tabs about ${name.toLowerCase()} tasks and projects, excluding other workspace topics.`,
+      tabs: lines.filter((line) => familyForPromptText(line.host, line.title) === name).map((line) => Number(line.index)),
+    })).filter((group) => group.tabs.length), unresolved: [] };
+  } else if (content.includes("Suggest 1 to 10 distinct, useful categories")) {
     assignments = { categories: GOLD_FAMILIES.map((name) => ({ name: `${name} AI`, description: `Tabs about ${name.toLowerCase()} tasks and projects, excluding other workspace topics.`, examples: [] })) };
   } else if (content.startsWith("AI WORKSPACE CLASSIFICATION")) {
     const categories = JSON.parse(content.split("Categories JSON:\n")[1].split("\nTabs JSON:")[0]);
@@ -91,7 +96,7 @@ const readJsonBody = async (request) => {
 
 const promptLines = (body) => {
   const content = body.messages?.[0]?.content || "";
-  if (String(content).startsWith("AI WORKSPACE CLASSIFICATION")) {
+  if (String(content).startsWith("AI WORKSPACE CLASSIFICATION") || String(content).startsWith("AI WORKSPACE GROUPING")) {
     return JSON.parse(String(content).split("Tabs JSON:\n")[1]).map((row) => ({ index: String(row.index), host: row.path || "", title: row.title || "" }));
   }
   return [...String(content).matchAll(/^(\d+)\. ([^\n]+?) — "([^"]*)"/gm)].map((match) => ({
