@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 
-import { familyForPromptText, fixturePageForPath } from "./zen-e2e-fixtures.mjs";
+import { GOLD_FAMILIES, familyForPromptText, fixturePageForPath } from "./zen-e2e-fixtures.mjs";
 
 const DEFAULT_OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1";
 const DEFAULT_OPENROUTER_MODEL = "google/gemini-3.5-flash";
@@ -41,10 +41,15 @@ const fakeProviderHandler = (calls) => async (request, response) => {
   const { body, rawBody } = await readJsonBody(request);
   const lines = promptLines(body);
   calls.push({ provider: "fake", tabCount: lines.length, requestBytes: Buffer.byteLength(rawBody) });
-  const assignments = Object.fromEntries(lines.map((line) => [
-    line.index,
-    `${familyForPromptText(line.host, line.title)} AI`,
-  ]));
+  const content = String(body.messages?.[0]?.content || "");
+  let assignments;
+  if (content.includes("Suggest 1 to 10 distinct, useful categories")) {
+    assignments = { categories: GOLD_FAMILIES.map((name) => ({ name: `${name} AI`, description: `Tabs about ${name.toLowerCase()} tasks and projects, excluding other workspace topics.`, examples: [] })) };
+  } else if (content.startsWith("AI WORKSPACE CLASSIFICATION")) {
+    const categories = JSON.parse(content.split("Categories JSON:\n")[1].split("\nTabs JSON:")[0]);
+    assignments = Object.fromEntries(lines.map((line) => [line.index,
+      categories.find((category) => category.name === `${familyForPromptText(line.host, line.title)} AI`)?.id || "unresolved"]));
+  } else assignments = Object.fromEntries(lines.map((line) => [line.index, `${familyForPromptText(line.host, line.title)} AI`]));
   response.writeHead(200, { "content-type": "application/json" });
   response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(assignments) } }] }));
 };
@@ -86,6 +91,9 @@ const readJsonBody = async (request) => {
 
 const promptLines = (body) => {
   const content = body.messages?.[0]?.content || "";
+  if (String(content).startsWith("AI WORKSPACE CLASSIFICATION")) {
+    return JSON.parse(String(content).split("Tabs JSON:\n")[1]).map((row) => ({ index: String(row.index), host: row.path || "", title: row.title || "" }));
+  }
   return [...String(content).matchAll(/^(\d+)\. ([^\n]+?) — "([^"]*)"/gm)].map((match) => ({
     index: match[1],
     host: match[2],

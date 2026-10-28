@@ -7,7 +7,7 @@
 
 import { CONFIG, LOG } from "./config.mjs";
 import { getOllamaHost, getOllamaModel, isLocalAIAcknowledged } from "./rules.mjs";
-import { fetchPageSnippet } from "./tabs.mjs";
+import { fetchPageSnippets } from "./tabs.mjs";
 import { showToast } from "./ui-toast.mjs";
 import { ollamaGenerateJson } from "./ollama-transport.mjs";
 import {
@@ -24,6 +24,7 @@ import { embedBatch } from "./ai.mjs";
 import { collectProviderTabMap, clusterAssignments, normalizeProviderLabel } from "./remote-assignment-retry.mjs";
 import { PROVIDER_TAB_BATCH_SIZE } from "./provider-batching.mjs";
 import { safeProviderErrorMessage } from "./safe-log.mjs";
+import { throwIfSortCancelled } from "./sort-session.mjs";
 
 const ollamaJson = async (host, model, prompt) => {
   const result = await ollamaGenerateJson(host, model, prompt, 4096);
@@ -149,12 +150,9 @@ const fetchContentCandidateSnippets = async (groups) => {
     if (jobs.length >= TITLE_CONTENT_FETCH_LIMIT) break;
   }
 
-  const snippets = await Promise.all(jobs.map(async ({ group, tab }) => ({
-    group,
-    tab,
-    snippet: await fetchPageSnippet(tab.url),
-  })));
-  return snippets.filter((entry) => entry.snippet);
+  const snippets = await fetchPageSnippets(jobs.map(({ tab }) => tab));
+  return jobs.map(({ group, tab }, index) => ({ group, tab, snippet: snippets[index] }))
+    .filter((entry) => entry.snippet);
 };
 
 const collectTitleTermCandidates = async (plan, rules, mode) => {
@@ -277,6 +275,7 @@ export const classifyExistingGroupsBatch = async (unmatched, rules, host, model)
       return name && (names.has(name.toLowerCase()) || /^(none|skipped)$/i.test(name)) ? name : null;
     },
   });
+  throwIfSortCancelled();
   const out = new Map(unmatched.map((_, index) => [index, names.get(parsedByIndex.get(index)?.toLowerCase()) || null]));
   out.unresolved = new Set(missing);
   if (failures.length) out.failed = failures.join("; ");
@@ -289,6 +288,7 @@ const clusterUnmatchedNewGroups = async (leftover, host, model) => {
     buildPrompt: (tabs) => buildClusterPrompt(tabs),
     fetchJson: async (prompt, count) => clusterAssignments(await ollamaJson(host, model, prompt), count),
   });
+  throwIfSortCancelled();
   const byName = new Map();
   const skipped = [];
   for (const [index, name] of parsedByIndex) {
@@ -332,11 +332,7 @@ export const unifiedClassifyOllama = async (unmatched, rules, host, model) => {
 
   // Each fetch has its own 3s timeout; any failure returns "" so it falls back to title-only context.
   const t0 = performance.now();
-  const snippets = await Promise.all(deduped.map((t) => {
-    const url = t.url || "";
-    if (!url.startsWith("http://") && !url.startsWith("https://")) return "";
-    return fetchPageSnippet(url);
-  }));
+  const snippets = await fetchPageSnippets(deduped);
   const hit = snippets.filter((s) => s).length;
   console.log(`${LOG} Ollama: fetched page snippets for ${hit}/${deduped.length} tab(s) in ${Math.round(performance.now() - t0)}ms`);
   const { parsedByIndex, failures } = await collectProviderTabMap({
@@ -344,6 +340,7 @@ export const unifiedClassifyOllama = async (unmatched, rules, host, model) => {
     buildPrompt: (tabs, chunkSnippets) => buildUnifiedPrompt(rules, tabs, chunkSnippets),
     fetchJson: (prompt) => ollamaJson(host, model, prompt),
   });
+  throwIfSortCancelled();
 
   const ruleNameByLower = new Map(
     rules.filter((r) => r?.name).map((r) => [r.name.toLowerCase(), r.name])
@@ -385,6 +382,7 @@ export const unifiedClassifyOllama = async (unmatched, rules, host, model) => {
     try {
       newGroups = await mergeNewCategoriesPass(newGroups, host, model);
     } catch (e) {
+      if (e.name === "AbortError") throw e;
       console.warn(`${LOG} Ollama merge-pass errored — keeping un-merged groups:`, e);
     }
   }
@@ -443,6 +441,7 @@ const resolveOllamaNameCollisions = async (newGroups, rules) => {
       if (embeddings[i]) centroidByGroup.set(g, embeddings[i]);
     });
   } catch (e) {
+    if (e.name === "AbortError") throw e;
     // embedBatch already swallows per-tab failures and returns null; this is
     // defense-in-depth — an empty centroidByGroup falls back to "disambiguate" (the safe default).
     console.warn(`${LOG} Ollama: embedding attempt for name-collision dedupe failed — disambiguating without embeddings:`, e);
@@ -524,6 +523,7 @@ export const runPass2Ollama = async (unmatched, rules) => {
   try {
     return await unifiedClassifyOllama(unmatched, rules, host, model);
   } catch (e) {
+    if (e.name === "AbortError") throw e;
     const message = safeProviderErrorMessage(e);
     console.error(`${LOG} Ollama unified classification failed: ${message}`);
     showToast(`Ollama classification failed: ${message}`);
@@ -561,11 +561,7 @@ export const runPass2OllamaFresh = async (allTabs) => {
     }
 
     const t0 = performance.now();
-    const snippets = await Promise.all(deduped.map((t) => {
-      const url = t.url || "";
-      if (!url.startsWith("http://") && !url.startsWith("https://")) return "";
-      return fetchPageSnippet(url);
-    }));
+    const snippets = await fetchPageSnippets(deduped);
     const hit = snippets.filter((s) => s).length;
     console.log(`${LOG} Ollama fresh: fetched snippets for ${hit}/${deduped.length} tab(s) in ${Math.round(performance.now() - t0)}ms`);
 
@@ -574,6 +570,7 @@ export const runPass2OllamaFresh = async (allTabs) => {
       buildPrompt: (tabs, chunkSnippets) => buildFreshPrompt(tabs, chunkSnippets),
       fetchJson: (prompt) => ollamaJson(host, model, prompt),
     });
+    throwIfSortCancelled();
 
     const newGroupsByKey = new Map();
     const skipped = [];
@@ -600,6 +597,7 @@ export const runPass2OllamaFresh = async (allTabs) => {
       try {
         newGroups = await mergeNewCategoriesPass(newGroups, host, model);
       } catch (e) {
+        if (e.name === "AbortError") throw e;
         console.warn(`${LOG} Ollama merge-pass errored — keeping un-merged groups:`, e);
       }
     }
@@ -607,6 +605,7 @@ export const runPass2OllamaFresh = async (allTabs) => {
     newGroups = await resolveOllamaNameCollisions(newGroups);
     return { assignedToExisting: [], newGroups, skipped, unresolved, ...(failures.length ? { failed: failures.join("; ") } : {}) };
   } catch (e) {
+    if (e.name === "AbortError") throw e;
     const message = safeProviderErrorMessage(e);
     console.error(`${LOG} Ollama fresh classification failed: ${message}`);
     showToast(`Ollama fresh classification failed: ${message}`);

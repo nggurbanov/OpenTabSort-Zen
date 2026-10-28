@@ -18,6 +18,7 @@ test("settings discovery ignores editor mutations after injection", () => {
     matches: (selector) => selector === ".sineItemPreferenceDialog",
     querySelectorAll: (selector) => selector === ".separator-label" ? [{ textContent: "Group Rules" }] : [],
     querySelector(selector) {
+      if (selector === ".zao-simple-settings") return {};
       if (selector === ".zao-rules-editor") return { _zaoRefresh() { rulesRefreshes++; } };
       if (selector === ".zao-jev-category-settings") return { _zaoRefresh() {
         categoryRefreshes++;
@@ -27,8 +28,9 @@ test("settings discovery ignores editor mutations after injection", () => {
     closest: () => dialog,
   };
   try {
-    globalThis.Services = { wm: { getMostRecentWindow: () => null } };
-    globalThis.document = { body: {}, querySelectorAll: () => [dialog] };
+    globalThis.Services = { wm: { getMostRecentWindow: () => null },
+      prefs: { getStringPref: () => "", addObserver() {}, removeObserver() {} } };
+    globalThis.document = { body: {}, querySelectorAll: (selector) => selector === ".sineItemPreferenceDialog" ? [dialog] : [] };
     globalThis.MutationObserver = class {
       constructor(handler) { callback = handler; }
       observe() {}

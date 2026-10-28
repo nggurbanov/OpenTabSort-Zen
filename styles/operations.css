@@ -1,0 +1,18 @@
+/* Native browser operation feedback, loaded only when it is needed. */
+.zao-operation {
+  position: fixed; inset-inline-start: 16px; inset-block-end: 16px; z-index: 2147483646;
+  box-sizing: border-box; width: min(360px, calc(100vw - 32px)); padding: 14px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  color: var(--toolbar-color, CanvasText); background: var(--zen-colors-tertiary, Canvas);
+  border: 1px solid var(--zen-colors-border, color-mix(in srgb, currentColor 25%, transparent));
+  border-radius: 8px; font: menu; box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
+}
+.zao-operation-message { flex: 1 1 100%; margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
+.zao-operation progress { width: 100%; accent-color: var(--zen-primary-color, AccentColor); }
+.zao-operation button { appearance: auto; font: inherit; min-height: 30px; padding: 4px 10px; cursor: pointer; }
+.zao-operation button:focus-visible { outline: 2px solid var(--zen-primary-color, AccentColor); outline-offset: 2px; }
+.zao-operation [hidden] { display: none !important; }
+.zao-notice { inset-inline-start: auto; inset-inline-end: 16px; }
+@media (prefers-reduced-motion: reduce) {
+  #tab-wand-button, #tab-wand-button *, .zao-spinner, .zao-sort-highlight { animation: none !important; transition: none !important; }
+}

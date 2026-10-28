@@ -1,0 +1,225 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-28T04:15:09Z",
+  "title": "Design System: OpenTabSort Zen",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "Host accent"
+      },
+      "operation-accent": {
+        "role": "primary",
+        "displayName": "Zen operation accent"
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Native canvas"
+      },
+      "canvas-text": {
+        "role": "neutral",
+        "displayName": "Native canvas text"
+      },
+      "field": {
+        "role": "neutral",
+        "displayName": "Native field"
+      },
+      "field-text": {
+        "role": "neutral",
+        "displayName": "Native field text"
+      },
+      "operation-surface": {
+        "role": "neutral",
+        "displayName": "Zen operation surface"
+      },
+      "operation-text": {
+        "role": "neutral",
+        "displayName": "Zen operation text"
+      },
+      "operation-border": {
+        "role": "neutral",
+        "displayName": "Zen operation border"
+      },
+      "control-border": {
+        "role": "neutral",
+        "displayName": "Adaptive control border"
+      },
+      "section-divider": {
+        "role": "neutral",
+        "displayName": "Adaptive section divider"
+      },
+      "domain-chip-surface": {
+        "role": "primary",
+        "displayName": "Domain chip tint"
+      },
+      "domain-chip-border": {
+        "role": "primary",
+        "displayName": "Domain chip border"
+      },
+      "title-chip-accent": {
+        "role": "secondary",
+        "displayName": "Advanced title-rule violet"
+      },
+      "category-error": {
+        "role": "error",
+        "displayName": "Advanced category error"
+      }
+    },
+    "typographyMeta": {
+      "body": {
+        "displayName": "Host interface",
+        "purpose": "Inherit Zen's UI font."
+      },
+      "setup-title": {
+        "displayName": "AI setup title",
+        "purpose": "Compact settings heading."
+      },
+      "field-label": {
+        "displayName": "Semibold label",
+        "purpose": "Field labels, legends and disclosure summary."
+      },
+      "helper": {
+        "displayName": "Helper text",
+        "purpose": "Existing preference descriptions."
+      },
+      "rule-chip": {
+        "displayName": "Rule-chip mono",
+        "purpose": "Saved domains and title terms."
+      }
+    },
+    "shadows": [
+      {
+        "name": "operation",
+        "value": "0 2px 8px rgb(0 0 0 / 15%)",
+        "purpose": "Transient operation feedback."
+      },
+      {
+        "name": "review",
+        "value": "0 14px 48px rgba(0, 0, 0, 0.35)",
+        "purpose": "Existing modal preview."
+      }
+    ],
+    "motion": [
+      {
+        "name": "wand-click",
+        "value": "550ms ease-in-out",
+        "purpose": "Existing click wiggle."
+      },
+      {
+        "name": "wand-thinking",
+        "value": "1.2s ease-in-out infinite",
+        "purpose": "Existing thinking pulse."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation: none; transition: none",
+        "purpose": "Disable wand, spinner and sort-highlight motion when requested."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "advanced-grid",
+        "value": "700px"
+      },
+      {
+        "name": "legacy-action-row",
+        "value": "520px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Native operation button",
+      "kind": "button",
+      "description": "Native Stop/Undo/Dismiss actions; hover and disabled styling come from the platform.",
+      "html": "<button class=\"ds-operation-button\" type=\"button\">Stop</button>",
+      "css": ".ds-operation-button { appearance: auto; font: inherit; min-height: 30px; padding: 4px 10px; cursor: pointer; } .ds-operation-button:focus-visible { outline: 2px solid var(--zen-primary-color, AccentColor); outline-offset: 2px; }"
+    },
+    {
+      "name": "Connection field",
+      "kind": "input",
+      "refersTo": "setup-field",
+      "description": "Visible label, full-width field and explicit keyboard focus.",
+      "html": "<label class=\"ds-field\"><span>Endpoint</span><input class=\"ds-control\" type=\"url\" value=\"https://your-provider.example/v1\"></label>",
+      "css": ".ds-field { display: grid; gap: 6px; min-width: 0; } .ds-field > span { font-weight: 600; } .ds-control { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; min-height: 36px; margin: 0; padding: 7px 10px; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius: 6px; background: Field; color: FieldText; font: inherit; } .ds-control:focus-visible { outline: 2px solid AccentColor; outline-offset: 2px; }"
+    },
+    {
+      "name": "Engine selector",
+      "kind": "input",
+      "refersTo": "setup-field",
+      "description": "Native select for choosing the engine; keyboard selection and open states remain native.",
+      "html": "<label class=\"ds-field\"><span>AI engine</span><select class=\"ds-control\"><option>Choose an AI engine</option><option>OpenAI-compatible</option><option>Built-in local AI</option></select></label>",
+      "css": ".ds-field { display: grid; gap: 6px; min-width: 0; } .ds-field > span { font-weight: 600; } .ds-control { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; min-height: 36px; margin: 0; padding: 7px 10px; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius: 6px; background: Field; color: FieldText; font: inherit; } .ds-control:focus-visible { outline: 2px solid AccentColor; outline-offset: 2px; }"
+    },
+    {
+      "name": "Advanced disclosure",
+      "kind": "nav",
+      "description": "Native, initially collapsed disclosure for retained editors.",
+      "html": "<details class=\"ds-advanced\"><summary>Advanced &amp; saved data</summary><p>Saved rules and advanced tools</p></details>",
+      "css": ".ds-advanced { display: block; padding: 0; margin: 28px 0 0; border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent); } .ds-advanced > summary { padding: 14px 0; cursor: pointer; font-weight: 600; } .ds-advanced > summary:focus-visible { outline: 2px solid AccentColor; outline-offset: 2px; }"
+    },
+    {
+      "name": "Domain rule chip",
+      "kind": "chip",
+      "refersTo": "domain-chip",
+      "description": "Advanced editor chip with drag affordance and a hoverable remove action.",
+      "html": "<span class=\"ds-domain-chip\" draggable=\"true\"><span>github.com</span><button class=\"ds-chip-remove\" type=\"button\" aria-label=\"Remove domain\">×</button></span>",
+      "css": ".ds-domain-chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 2px 2px 5px; background: color-mix(in srgb, AccentColor 12%, transparent); border: 1px solid color-mix(in srgb, AccentColor 30%, transparent); border-radius: 999px; font-size: 12px; font-family: ui-monospace, \"SF Mono\", Menlo, Consolas, monospace; white-space: nowrap; max-width: 100%; cursor: grab; user-select: none; } .ds-domain-chip:active { cursor: grabbing; } .ds-chip-remove { appearance: none; background: transparent; border: none; color: inherit; width: 16px; height: 16px; min-width: 16px; border-radius: 50%; cursor: pointer; font-size: 12px; line-height: 1; padding: 0; margin: 0; opacity: .55; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; } .ds-chip-remove:hover { opacity: 1; background: color-mix(in srgb, currentColor 18%, transparent); }"
+    },
+    {
+      "name": "Operation panel",
+      "kind": "card",
+      "refersTo": "operation-panel",
+      "description": "Visual specimen of the feedback panel; app positioning is omitted in the specimen. Live app states show Stop, valid Undo, setup recovery and Dismiss as applicable.",
+      "html": "<section class=\"ds-operation\" aria-label=\"Tab sorting\"><p class=\"ds-message\" role=\"status\" aria-live=\"polite\">Finding useful groups for 300 tabs…</p><progress aria-label=\"Tab sorting progress\"></progress><button class=\"ds-operation-button\" type=\"button\">Stop</button></section>",
+      "css": ".ds-operation { box-sizing: border-box; width: min(360px, calc(100vw - 32px)); padding: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--toolbar-color, CanvasText); background: var(--zen-colors-tertiary, Canvas); border: 1px solid var(--zen-colors-border, color-mix(in srgb, currentColor 25%, transparent)); border-radius: 8px; font: menu; box-shadow: 0 2px 8px rgb(0 0 0 / 15%); } .ds-message { flex: 1 1 100%; margin: 0; line-height: 1.5; overflow-wrap: anywhere; } .ds-operation progress { width: 100%; accent-color: var(--zen-primary-color, AccentColor); } .ds-operation-button { appearance: auto; font: inherit; min-height: 30px; padding: 4px 10px; cursor: pointer; } .ds-operation-button:focus-visible { outline: 2px solid var(--zen-primary-color, AccentColor); outline-offset: 2px; }"
+    },
+    {
+      "name": "Native review surface",
+      "kind": "custom",
+      "refersTo": "review-dialog",
+      "description": "Open-dialog visual specimen. The app opens it modally, manages focus and commits only on Apply.",
+      "html": "<dialog class=\"ds-review\" open><p>Review the proposed groups</p><div><button type=\"button\">Apply</button> <button type=\"button\">Cancel</button></div></dialog>",
+      "css": ".ds-review { position: relative; padding: 0; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 12px; max-width: 640px; width: min(640px, 92vw); max-height: 80vh; background: Canvas; color: CanvasText; box-shadow: 0 14px 48px rgba(0,0,0,.35); overflow: hidden; font-size: 13px; display: flex; flex-direction: column; } .ds-review::backdrop { background: rgba(0,0,0,.45); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Native Zen utility",
+    "overview": "OpenTabSort is a utility inside Zen browser chrome. Its established visual system inherits the host theme, system controls, and platform typography. It uses compact fields, restrained borders, and readable status messages rather than a separate brand palette.\n\nThe small AI setup and operation panel share this native character with the retained editors. Provider-specific fields appear when relevant; advanced tools sit behind a native disclosure. Theme adaptation comes from CSS system colors and Zen variables, not fixed light/dark screen palettes.",
+    "keyCharacteristics": [
+      "Host-controlled colors and typography.",
+      "Compact controls with explicit keyboard focus.",
+      "A quiet settings surface and persistent operation feedback.",
+      "Native dialogs and disclosure, with bounded widths and wrapping content."
+    ],
+    "rules": [
+      {
+        "name": "Host Theme",
+        "body": "System colors and Zen variables remain the color authority; a screenshot's resolved hex values are not new palette tokens.",
+        "section": "colors"
+      },
+      {
+        "name": "Host Type",
+        "body": "Inherit Zen's interface font; use the platform menu font for the operation panel and the existing monospace stack for rule chips.",
+        "section": "typography"
+      },
+      {
+        "name": "Purposeful Lift",
+        "body": "Use the small operation shadow for transient feedback and the larger existing shadow for modal review; keep the setup form flat.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do inherit system colors and Zen variables so the user's theme stays authoritative.",
+      "Do retain visible focus, native labels, masked API-key fields, and polite status announcements.",
+      "Do use the documented control, panel, and review shapes for their existing roles.",
+      "Do let fields, action rows, and long status text wrap within the host dialog."
+    ],
+    "donts": [
+      "Don't replace the inherited theme with a new fixed brand palette or downloadable font.",
+      "Don't promote advanced rule chips or category editors into the simple connection form.",
+      "Don't hide an active operation or remove Stop/Undo feedback to make the surface look quieter.",
+      "Don't present decorative motion when reduced motion is requested."
+    ]
+  }
+}

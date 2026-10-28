@@ -2,7 +2,7 @@
 
 import { CONFIG, LOG } from "./config.mjs";
 import { domCache } from "./tabs.mjs";
-import { handleOrganizeClick } from "./click-handler.mjs";
+const handleOrganizeClick = async () => (await import("./click-handler.mjs")).handleOrganizeClick();
 
 // Lucide "wand-sparkles" — the magic wand with a sparkle around the tip.
 // Inline SVG (not an icon-font / external file) so it inherits currentColor from
@@ -27,7 +27,8 @@ const buttonXul = () => `
   <toolbarbutton
     id="${CONFIG.BUTTON_ID}"
     command="${CONFIG.COMMAND_ID}"
-    tooltiptext="Auto Organize Tabs (domain rules + AI fallback)">
+    label="Organize tabs"
+    tooltiptext="Organize tabs in this workspace">
     <hbox class="toolbarbutton-box" align="center">
       ${WAND_ICON_SVG}
     </hbox>
@@ -70,6 +71,7 @@ export const addButtonToAllSeparators = () => {
 export const setupCommand = () => {
   const zenCommands = domCache.getCommandSet();
   if (!zenCommands) return;
+  if (window._zaoCommandState && window._zaoCommandState.target !== zenCommands) teardownCommand();
 
   if (!zenCommands.querySelector(`#${CONFIG.COMMAND_ID}`)) {
     try {
@@ -92,40 +94,63 @@ export const setupCommand = () => {
     zenCommands.addEventListener("command", listener);
     zenCommands._zaoCommandListener = listener;
   }
+  window._zaoCommandState = { target: zenCommands, listener: zenCommands._zaoCommandListener };
+};
+
+export const teardownCommand = () => {
+  const state = window._zaoCommandState;
+  const target = state?.target || domCache.getCommandSet();
+  const listener = state?.listener || target?._zaoCommandListener;
+  if (target && listener) {
+    target.removeEventListener("command", listener);
+    if (target._zaoCommandListener === listener) delete target._zaoCommandListener;
+  }
+  document.querySelectorAll(`#${CONFIG.BUTTON_ID}, #${CONFIG.COMMAND_ID}`).forEach((element) => element.remove());
+  delete window._zaoCommandState;
+  domCache.invalidate();
 };
 
 // Re-inject the tidy button on workspace changes (the separator element changes per workspace).
 export const setupWorkspaceHooks = () => {
-  if (typeof window.gZenWorkspaces === "undefined") return;
-  // Guard against double-install: dev reloads of the entry script would
-  // otherwise stack our wrappers, doubling the calls per workspace switch.
-  if (window.gZenWorkspaces._zaoHooksInstalled) return;
-  window.gZenWorkspaces._zaoHooksInstalled = true;
-
-  const originalOnTabBrowserInserted = window.gZenWorkspaces.onTabBrowserInserted;
-  const originalUpdateTabsContainers = window.gZenWorkspaces.updateTabsContainers;
-
-  window.gZenWorkspaces.onTabBrowserInserted = function (event) {
-    if (typeof originalOnTabBrowserInserted === "function") {
-      try {
-        originalOnTabBrowserInserted.call(window.gZenWorkspaces, event);
-      } catch (e) {
-        console.error(`${LOG} hook onTabBrowserInserted error:`, e);
-      }
+  const owner = window.gZenWorkspaces;
+  if (!owner || owner._zaoHooksInstalled) return;
+  if (window._zaoWorkspaceHooks) teardownWorkspaceHooks();
+  const state = { owner, active: true, hooks: new Map() };
+  window._zaoWorkspaceHooks = state;
+  owner._zaoHooksInstalled = state;
+  try {
+    for (const name of ["onTabBrowserInserted", "updateTabsContainers"]) {
+      const descriptor = Object.getOwnPropertyDescriptor(owner, name);
+      const original = owner[name];
+      const wrapper = function (...args) {
+        const result = typeof original === "function" ? original.apply(this, args) : undefined;
+        if (state.active) {
+          domCache.invalidate();
+          addButtonToAllSeparators();
+        }
+        return result;
+      };
+      owner[name] = wrapper;
+      state.hooks.set(name, { descriptor, wrapper });
     }
-    domCache.invalidate();
-    addButtonToAllSeparators();
-  };
+  } catch (error) {
+    teardownWorkspaceHooks();
+    throw error;
+  }
+};
 
-  window.gZenWorkspaces.updateTabsContainers = function (...args) {
-    if (typeof originalUpdateTabsContainers === "function") {
-      try {
-        originalUpdateTabsContainers.apply(window.gZenWorkspaces, args);
-      } catch (e) {
-        console.error(`${LOG} hook updateTabsContainers error:`, e);
-      }
-    }
-    domCache.invalidate();
-    addButtonToAllSeparators();
-  };
+export const teardownWorkspaceHooks = () => {
+  const state = window._zaoWorkspaceHooks;
+  if (!state) return;
+  state.active = false;
+  for (const [name, { descriptor, wrapper }] of state.hooks) {
+    // A later mod may have wrapped/replaced our hook. Leave its method intact;
+    // our inactive wrapper remains a transparent call-through in that chain.
+    if (state.owner[name] !== wrapper) continue;
+    if (descriptor) Object.defineProperty(state.owner, name, descriptor);
+    else delete state.owner[name];
+  }
+  if (state.owner._zaoHooksInstalled === state) delete state.owner._zaoHooksInstalled;
+  delete window._zaoWorkspaceHooks;
+  domCache.invalidate();
 };

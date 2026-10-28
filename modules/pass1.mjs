@@ -5,6 +5,7 @@ import { LOG } from "./config.mjs";
 import { findExistingGroup, expandIfCollapsed, collapseGroup, applyGroupAppearance, findSafeInsertAnchor } from "./groups.mjs";
 import { getMatchMode } from "./rules.mjs";
 import { normalizeCase } from "./dedupe.mjs";
+import { capturePlacement, restorePlacement } from "./apply-placement.mjs";
 
 // Match a hostname against a single rule-domain pattern.
 //   "host.com"    matches the bare host AND any subdomain
@@ -90,82 +91,52 @@ export const runPass1 = (tabs, rules) => {
  * Execute the moves planned by `runPass1`. Creates new tab-groups when needed,
  * reuses existing ones, and applies per-rule colors after placement.
  *
- * @returns {{ movedToExisting, createdGroups, movedToNew, errors[] }} counts + per-group error messages.
+ * @returns {{ movedToExisting, createdGroups, movedToNew, errors, failedTabs }} Successful counts and explicit placement/rollback failures.
  */
 export const applyPass1 = (byGroup, workspaceId, rules) => {
-  let movedToExisting = 0;
-  let createdGroups = 0;
-  let movedToNew = 0;
-  const errors = [];
-
-  const ruleByName = new Map(rules.map((r) => [r.name, r]));
-
+  let movedToExisting = 0, createdGroups = 0, movedToNew = 0;
+  const errors = [], failedTabs = [];
+  const ruleByName = new Map(rules.map((rule) => [rule.name, rule]));
   for (const [groupName, items] of byGroup) {
-    // Resolve each item's tab info to its live DOM node (`_tab`) and re-check the
-    // current group from the DOM. We re-check (rather than trusting the `currentGroup`
-    // field set by runPass1) because the DOM may have changed between planning and
-    // applying — e.g. the user dragged a tab, or the consolidate/dissolve passes ran.
-    const tabsForGroup = items
-      .map((item) => item._tab)
-      .filter((t) => {
-        if (!t?.isConnected) return false;
-        const currentGroupName = t.closest("tab-group")?.getAttribute("label");
-        return currentGroupName !== groupName;
-      });
-
-    if (tabsForGroup.length === 0) continue;
-
+    const liveMembers = items.filter((item) => item._tab?.isConnected &&
+      item._tab.closest("tab-group")?.getAttribute("label") !== groupName);
+    const tabsForGroup = liveMembers.map((item) => item._tab);
+    if (!tabsForGroup.length) continue;
+    const receipt = capturePlacement(tabsForGroup);
     const existing = findExistingGroup(groupName, workspaceId);
-
-    if (existing?.isConnected) {
-      console.log(`${LOG} reusing existing group "${groupName}" (${tabsForGroup.length} tab(s) to move in)`);
-      try {
-        // Remember if the group was collapsed BEFORE we touched it. If so,
-        // we re-collapse after adding the new tabs so the user's collapse
-        // state isn't lost AND the new tabs get properly aria-hidden'd
-        // via the property setter on collapse.
-        const wasCollapsed = expandIfCollapsed(existing);
+    let target = existing, created = false, wasCollapsed = false;
+    try {
+      if (existing?.isConnected) {
+        wasCollapsed = expandIfCollapsed(existing);
         for (const tab of tabsForGroup) {
-          if (!tab.isConnected) continue;
-          if (tab.closest("tab-group") === existing) continue;
-          gBrowser.moveTabToExistingGroup(tab, existing);
-          movedToExisting++;
+          if (tab.closest("tab-group") !== existing) gBrowser.moveTabToExistingGroup(tab, existing);
         }
-        if (ruleByName.has(groupName)) applyGroupAppearance(existing, ruleByName.get(groupName));
-        if (wasCollapsed) {
-          // Defer one tick so Firefox's tab-insertion bookkeeping completes
-          // before we collapse — otherwise the new tab's aria-hidden may
-          // not be set in the same paint.
-          const groupRef = existing;
-          setTimeout(() => collapseGroup(groupRef), 0);
-        }
-      } catch (e) {
-        console.error(`${LOG} error moving tabs into "${groupName}":`, e);
-        errors.push({ group: groupName, error: e.message });
-      }
-    } else {
-      console.log(`${LOG} creating new group "${groupName}" (${tabsForGroup.length} tab(s))`);
-      try {
-        const newGroup = gBrowser.addTabGroup(tabsForGroup, {
-          label: groupName,
-          // Anchor at a DOM position OUTSIDE any enclosing tab-group; otherwise
-          // Zen creates the new group as a child of the old one (nesting bug).
-          insertBefore: findSafeInsertAnchor(),
+      } else {
+        // Use the native ungroup API before creating a sibling group. Capture
+        // first: native creation may fail after detaching one or more tabs.
+        for (const tab of tabsForGroup) if (tab.closest("tab-group")) gBrowser.ungroupTab(tab);
+        target = gBrowser.addTabGroup(tabsForGroup, {
+          label: groupName, insertBefore: findSafeInsertAnchor(),
         });
-        if (newGroup) {
-          createdGroups++;
-          movedToNew += tabsForGroup.length;
-          if (ruleByName.has(groupName)) applyGroupAppearance(newGroup, ruleByName.get(groupName));
-        } else {
-          console.warn(`${LOG} addTabGroup returned no element for "${groupName}"`);
-          errors.push({ group: groupName, error: "addTabGroup returned null" });
-        }
-      } catch (e) {
-        console.error(`${LOG} error creating group "${groupName}":`, e);
-        errors.push({ group: groupName, error: e.message });
+        created = true;
       }
+      if (!target?.isConnected || tabsForGroup.some((tab) => tab.closest("tab-group") !== target)) {
+        throw new Error("Zen did not place every tab into its rule group");
+      }
+      if (ruleByName.has(groupName)) applyGroupAppearance(target, ruleByName.get(groupName));
+      if (created) { createdGroups++; movedToNew += tabsForGroup.length; }
+      else movedToExisting += tabsForGroup.length;
+    } catch (error) {
+      const rollbackErrors = restorePlacement(receipt);
+      try {
+        if (created && target?.isConnected && !target.querySelector("tab")) target.remove();
+      } catch (cleanupError) { rollbackErrors.push(cleanupError.message || String(cleanupError)); }
+      errors.push({ group: groupName, error: error.message || String(error), rollbackErrors });
+      failedTabs.push(...liveMembers);
+      console.error(`${LOG} failed to place rule group "${groupName}":`, error);
+    } finally {
+      if (wasCollapsed && existing?.isConnected) collapseGroup(existing);
     }
   }
-
-  return { movedToExisting, createdGroups, movedToNew, errors };
+  return { movedToExisting, createdGroups, movedToNew, errors, failedTabs };
 };

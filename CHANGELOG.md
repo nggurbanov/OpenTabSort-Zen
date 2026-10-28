@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.0 — Unreleased
+
+- Make the everyday wand AI-first: infer groups from the active workspace, then classify against a shared vocabulary in bounded batches. Saved rules and manual categories are no longer prerequisites.
+- Add a compact AI setup with only the selected engine's connection, explicit provider consent, and optional review. An unconfigured click opens setup without provider requests.
+- Keep existing saved rules, categories, provider options, appearance tools, and backups under lazy **Advanced & saved data**. **Run advanced sorting** invokes the retained rules-and-AI workflow.
+- Use metadata-only planning for primary chat/Ollama sorting; Decision sorting also creates fresh transient categories without overwriting saved categories. Built-in local AI retains its fresh embedding pipeline.
+- Share cancellable progress, Stop, state invalidation, and native session Undo across sorting flows. Bound page-context work to six workers, a 256 KiB HTML prefix per page, and a six-second phase budget.
+- Load browser/settings runtimes, AI engines, advanced editors, and dialogs on demand. Start fresh installations with an empty rule list and Ollama startup warming disabled.
+- Add primary-action, cancellation, placement/identity, settings, and lifecycle regressions; native disposable-profile runners; and reproducible import/transfer benchmarks. See [the verification record](docs/overhaul-verification.md) for measured results and their limits.
+
 ## 1.4.2 — 2026-10-28
 
 - Stop the settings discovery observer from refreshing an already-injected editor. Category refresh replaces DOM children and previously re-triggered discovery indefinitely, freezing Zen and causing runaway parent-process memory growth.

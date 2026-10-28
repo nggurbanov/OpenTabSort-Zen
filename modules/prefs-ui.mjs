@@ -1,24 +1,25 @@
 // Zen Tab Wand — preferences-context setup.
-// Watches for Sine's per-mod settings dialog and injects the rules editor widget
-// after the "Group Rules" separator. Also injects our stylesheet (Sine's chrome CSS
-// pipeline doesn't reach about:preferences scope).
+// Provides a small AI connection form and lazily loads previous workflow tools.
+// Sine's chrome CSS pipeline does not reach about:preferences, so styles load here.
 
-import { CONFIG, LOG, DEFAULT_RULES, BUILD_VERSION, h } from "./config.mjs";
-import { readRulesPref, writeRulesPref, getAIEngine } from "./rules.mjs";
-import {
-  buildRulesEditor,
-  buildSkipDomainsEditor,
-  buildCustomIconsEditor,
-  buildBackupRestoreSection,
-  teardownRulesPrefObserver,
-  teardownSkipPrefObserver,
-} from "./widget.mjs";
-import { fetchZenColorsFromBrowser } from "./color-picker.mjs";
-import { buildSavedCategoryEditor } from "./jev-ui.mjs";
+import { CONFIG, LOG, BUILD_VERSION, h } from "./config.mjs";
+import { readRulesPref, getAIEngine } from "./rules.mjs";
+import { buildSimpleSettings } from "./simple-settings.mjs";
 
 console.log(`[OpenTabSort] prefs-ui.mjs loaded — v${BUILD_VERSION}`);
 
 let settingsObserver = null;
+let advancedWidget = null;
+const dialogStates = new Map();
+
+const releaseDialog = (dialog) => {
+  const state = dialogStates.get(dialog);
+  if (!state) return;
+  state.watcher?.disconnect();
+  clearTimeout(state.pollTimer);
+  delete dialog._zaoOpenWatcher;
+  dialogStates.delete(dialog);
+};
 
 // Returns true if `dialog` contains a Sine separator whose label starts with
 // "Group Rules" — our marker for "this is our mod's settings dialog". We use
@@ -104,9 +105,8 @@ const injectSectionDescriptions = (dialog) => {
 };
 
 // ─── Conditional field visibility ────────────────────────────────────────────
-// Sine's preferences.json has no native conditional show/hide, so each control
-// renders unconditionally and we toggle a `.zao-pref-hidden` class based on the
-// current AI engine value.
+// Sine renders controls unconditionally; visibility follows the selected
+// engine, effective sorting mode, and category suggestion requirements.
 //
 // Strategy for locating a control's row:
 //   1. element with `[pref=...]` or `[property=...]` set to the pref name
@@ -275,23 +275,6 @@ const alignSettingRows = (dialog) => {
   }
 };
 
-const setupAIEngineChangeFallback = (dialog) => {
-  const row = findPrefRow(dialog, CONFIG.AI_ENGINE_PREF);
-  if (!row || row._zaoAIEngineFallback) return;
-  row._zaoAIEngineFallback = true;
-  const refresh = () => {
-    setTimeout(() => updateConditionalFields(dialog), 0);
-    setTimeout(() => updateConditionalFields(dialog), 100);
-  };
-  row.addEventListener("change", refresh);
-  row.addEventListener("input", refresh);
-  row.addEventListener("command", refresh);
-  row.addEventListener("click", refresh);
-};
-
-const shortOptionLabel = (label) =>
-  String(label || "").split(/\s+(?:--|—)\s+/)[0].trim();
-
 const dropdownConfig = (prefName) => DROPDOWN_CONFIGS[prefName];
 
 const readStringPref = (prefName, fallback = "") => {
@@ -307,178 +290,56 @@ const writeStringPref = (prefName, value) => {
   catch (e) { console.warn(`${LOG} failed to set ${prefName}:`, e); }
 };
 
-const closeCustomDropdowns = (dialog, except = null) => {
-  for (const wrap of dialog.querySelectorAll(".zao-custom-dropdown.zao-open")) {
-    if (wrap === except) continue;
-    wrap.classList.remove("zao-open");
-    wrap.querySelector(".zao-custom-dropdown-button")?.setAttribute("aria-expanded", "false");
-  }
-};
-
 const selectedDropdownOption = (config, value) =>
   config.options.find(([v]) => v === value) || config.options.find(([v]) => v === config.defaultValue) || config.options[0];
 
-const updateCustomDropdownMenuWidth = (wrap) => {
-  if (!wrap) return;
-  const labels = [...wrap.querySelectorAll(".zao-custom-dropdown-item:not(.zao-option-hidden)")]
-    .map((item) => item.dataset.fullLabel || item.textContent || "");
-  const longest = labels.reduce((n, label) => Math.max(n, label.length), 16);
-  wrap.style.setProperty("--zao-dropdown-menu-ch", String(Math.min(longest, 92)));
+const syncSettingsSelect = (dialog, prefName) => {
+  const select = findPrefRow(dialog, prefName)?.querySelector(".zao-settings-select");
+  const config = dropdownConfig(prefName);
+  if (!select || !config) return;
+  const selected = selectedDropdownOption(config, readStringPref(prefName, config.defaultValue));
+  select.value = selected[0];
+  select.dataset.value = selected[0];
+  select.title = selected[1];
 };
 
-const syncCustomDropdown = (dialog, prefName) => {
-  const row = findPrefRow(dialog, prefName);
-  const wrap = row?.querySelector(".zao-custom-dropdown");
-  const config = dropdownConfig(prefName);
-  if (!row || !wrap || !config) return;
-
-  const value = readStringPref(prefName, config.defaultValue);
-  const selected = selectedDropdownOption(config, value);
-  const button = wrap.querySelector(".zao-custom-dropdown-button");
-  const label = selected?.[1] || "";
-  button.textContent = shortOptionLabel(label);
-  button.title = label;
-  button.dataset.value = selected?.[0] || "";
-  for (const item of wrap.querySelectorAll(".zao-custom-dropdown-item")) {
-    const isSelected = item.dataset.value === button.dataset.value;
-    item.classList.toggle("zao-selected", isSelected);
-    item.setAttribute("aria-selected", isSelected ? "true" : "false");
-  }
-  updateCustomDropdownMenuWidth(wrap);
-};
-
-const installCustomDropdown = (dialog, prefName) => {
+// Let Gecko provide the complete select keyboard and accessibility behavior.
+// Keep the wrapper class for the existing Sine integration and E2E discovery.
+const installSettingsSelect = (dialog, prefName) => {
   const row = findPrefRow(dialog, prefName);
   const config = dropdownConfig(prefName);
-  if (!row || !config || row._zaoCustomDropdown) return;
-  row._zaoCustomDropdown = true;
-
-  for (const control of row.querySelectorAll("select, menulist, button:not(.zao-custom-dropdown-button), [role='button']:not(.zao-custom-dropdown-button)")) {
+  if (!row || !config || row.querySelector(".zao-settings-select")) return;
+  for (const control of row.querySelectorAll("select, menulist, button, [role='button']")) {
     control.classList.add("zao-native-dropdown-hidden");
     control.setAttribute("aria-hidden", "true");
     control.tabIndex = -1;
   }
-
   const wrap = h("div", { class: "zao-custom-dropdown" });
-  wrap.dataset.pref = prefName;
-  const button = h("button", { class: "zao-custom-dropdown-button" });
-  button.type = "button";
-  button.setAttribute("aria-haspopup", "listbox");
-  button.setAttribute("aria-expanded", "false");
-  const menu = h("div", { class: "zao-custom-dropdown-menu" });
-  menu.setAttribute("role", "listbox");
-
-  for (const [value, label] of config.options) {
-    const item = h("button", { class: "zao-custom-dropdown-item", text: label });
-    item.type = "button";
-    item.dataset.value = value;
-    item.dataset.fullLabel = label;
-    item.setAttribute("role", "option");
-    item.addEventListener("click", (e) => {
-      e.stopPropagation();
-      writeStringPref(prefName, value);
-      closeCustomDropdowns(dialog);
-      syncCustomDropdown(dialog, prefName);
-      updateConditionalFields(dialog);
-    });
-    menu.appendChild(item);
+  const select = h("select", { class: "zao-settings-select zao-custom-dropdown-button" });
+  select.id = `${prefName.replace(/\./g, "-")}-control`;
+  const label = row.querySelector(".sineItemPreferenceLabel");
+  if (label) {
+    if (!label.id) label.id = `${select.id}-label`;
+    select.setAttribute("aria-labelledby", label.id);
+  } else {
+    select.setAttribute("aria-label", prefName.split(".").pop().replace(/-/g, " "));
   }
-
-  button.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const willOpen = !wrap.classList.contains("zao-open");
-    closeCustomDropdowns(dialog, wrap);
-    wrap.classList.toggle("zao-open", willOpen);
-    button.setAttribute("aria-expanded", willOpen ? "true" : "false");
+  for (const [value, text] of config.options) {
+    const option = h("option", { text });
+    option.value = value;
+    select.appendChild(option);
+  }
+  select.addEventListener("change", () => {
+    writeStringPref(prefName, select.value);
+    updateConditionalFields(dialog);
   });
-  button.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      closeCustomDropdowns(dialog);
-      button.focus();
-    }
-    if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      wrap.classList.add("zao-open");
-      button.setAttribute("aria-expanded", "true");
-      wrap.querySelector(".zao-custom-dropdown-item:not(.zao-option-hidden)")?.focus();
-    }
-  });
-  menu.addEventListener("keydown", (e) => {
-    const items = [...menu.querySelectorAll(".zao-custom-dropdown-item:not(.zao-option-hidden)")];
-    const i = items.indexOf(document.activeElement);
-    if (e.key === "Escape") {
-      closeCustomDropdowns(dialog);
-      button.focus();
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      items[Math.min(i + 1, items.length - 1)]?.focus();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      items[Math.max(i - 1, 0)]?.focus();
-    }
-  });
-
-  wrap.appendChild(button);
-  wrap.appendChild(menu);
+  wrap.appendChild(select);
   row.appendChild(wrap);
-  syncCustomDropdown(dialog, prefName);
+  syncSettingsSelect(dialog, prefName);
 };
 
-const installCustomDropdowns = (dialog) => {
-  if (!dialog._zaoCustomDropdownClose) {
-    dialog._zaoCustomDropdownClose = true;
-    document.addEventListener("click", (e) => {
-      if (!dialog.isConnected || dialog.contains(e.target)) return;
-      closeCustomDropdowns(dialog);
-    });
-    dialog.addEventListener("click", (e) => {
-      if (!e.target.closest?.(".zao-custom-dropdown")) closeCustomDropdowns(dialog);
-    });
-  }
-  for (const prefName of DROPDOWN_PREFS) installCustomDropdown(dialog, prefName);
-};
-
-const normalizeAIEngineValue = (value) => {
-  const v = String(value || "").toLocaleLowerCase();
-  if (v === "") return "";
-  if (v === "off") return "off";
-  if (v === "local") return "local";
-  if (["ollama", "openai", "gemini", "custom", "jev"].includes(v)) return v;
-  const hasLocal = v.includes("local");
-  const hasOllama = v.includes("ollama");
-  if (hasLocal && !hasOllama) return "local";
-  if (hasOllama && !hasLocal) return "ollama";
-  if (v === "none") return "off";
-  return "";
-};
-
-const readSelectedAIEngineFromDialog = (dialog) => {
-  const row = findPrefRow(dialog, CONFIG.AI_ENGINE_PREF);
-  if (!row) return "";
-
-  const customValue = normalizeAIEngineValue(row.querySelector(".zao-custom-dropdown-button")?.dataset.value);
-  if (customValue) return customValue;
-
-  for (const control of row.querySelectorAll("select, menulist, button, input")) {
-    const value = normalizeAIEngineValue(control.value || control.getAttribute?.("value"));
-    if (value) return value;
-    const label = normalizeAIEngineValue(control.label || control.getAttribute?.("label"));
-    if (label) return label;
-    const text = normalizeAIEngineValue(control.textContent);
-    if (text) return text;
-  }
-
-  const selected = row.querySelector(
-    "option:checked, [selected], [aria-selected='true'], [data-selected='true']"
-  );
-  const selectedValue = normalizeAIEngineValue(
-    selected?.getAttribute?.("value") ||
-    selected?.getAttribute?.("data-value") ||
-    selected?.textContent
-  );
-  if (selectedValue) return selectedValue;
-
-  return "";
+const installSettingsSelects = (dialog) => {
+  for (const prefName of DROPDOWN_PREFS) installSettingsSelect(dialog, prefName);
 };
 
 const AI_NEW_GROUP_OPTIONS = {
@@ -516,29 +377,22 @@ const setNewGroupOptionsForEngine = (dialog, engine) => {
     }
   }
 
-  const custom = row.querySelector(".zao-custom-dropdown");
-  if (custom) {
-    for (const item of custom.querySelectorAll(".zao-custom-dropdown-item")) {
-      const hidden = !allowed.has(item.dataset.value);
-      item.classList.toggle("zao-option-hidden", hidden);
-      item.disabled = hidden;
-      item.setAttribute("aria-hidden", hidden ? "true" : "false");
-    }
-    updateCustomDropdownMenuWidth(custom);
-    syncCustomDropdown(dialog, CONFIG.AI_NEW_GROUP_BEHAVIOR_PREF);
-  }
+  syncSettingsSelect(dialog, CONFIG.AI_NEW_GROUP_BEHAVIOR_PREF);
 };
 
 const updateConditionalFields = (dialog) => {
-  // Prefer the visible control because Sine may update the UI before the pref
-  // observer sees the committed value. Fall back to the stored pref on reopen.
-  const uiEngine = readSelectedAIEngineFromDialog(dialog);
-  const prefEngine = getAIEngine();
-  const engine = uiEngine || prefEngine;
+  const engine = getAIEngine();
   const aiEnabled = engine !== "off";
   const remote = ["openai", "gemini", "custom"].includes(engine);
   const jev = engine === "jev";
   const categoryProvider = readStringPref(CONFIG.AI_JEV_CATEGORY_PROVIDER_PREF, "openai");
+  const categorySource = readStringPref(CONFIG.AI_JEV_CATEGORY_SOURCE_PREF, "reuse");
+  const needsCategoryProvider = jev && categorySource !== "manual";
+  const fullAI = readStringPref(CONFIG.AI_SORT_MODE_PREF, "rules-first") === "full-ai";
+  const newBehavior = readStringPref(CONFIG.AI_NEW_GROUP_BEHAVIOR_PREF, "auto-add");
+  const freshLike = fullAI || ["fresh-categories", "identify-only"].includes(newBehavior);
+  const titleLearningAvailable = !freshLike && newBehavior !== "prompt" &&
+    (readStringPref(CONFIG.AI_EXISTING_BEHAVIOR_PREF, "always-add") === "always-add" || newBehavior === "auto-add");
 
   const setHidden = (row, hidden) => {
     if (!row) return;
@@ -562,207 +416,66 @@ const updateConditionalFields = (dialog) => {
     localBatchSize: findPrefRow(dialog, CONFIG.AI_LOCAL_BATCH_SIZE_PREF),
   };
 
-  setHidden(rows.existingBehavior, engine !== "ollama" && !remote);
-  setHidden(rows.titleLearning, engine !== "ollama");
-  setHidden(rows.newGroupBehavior, !aiEnabled || jev);
-  setHidden(rows.ollamaHost, engine !== "ollama" && !(jev && categoryProvider === "ollama"));
-  setHidden(rows.ollamaModel, engine !== "ollama" && !(jev && categoryProvider === "ollama"));
+  setHidden(rows.existingBehavior, (engine !== "ollama" && !remote) || freshLike);
+  setHidden(rows.titleLearning, engine !== "ollama" || !titleLearningAvailable);
+  setHidden(rows.newGroupBehavior, !aiEnabled || jev || fullAI);
+  setHidden(rows.ollamaHost, engine !== "ollama" && !(needsCategoryProvider && categoryProvider === "ollama"));
+  setHidden(rows.ollamaModel, engine !== "ollama" && !(needsCategoryProvider && categoryProvider === "ollama"));
   setHidden(rows.ollamaWarmup,      engine !== "ollama");
   setHidden(rows.localBatchSize, engine !== "local");
   setHidden(findPrefRow(dialog, CONFIG.AI_SORT_MODE_PREF), !aiEnabled || jev);
   setHidden(findPrefRow(dialog, CONFIG.AI_PROVIDER_CONSENT_PREF), !remote && !jev);
   for (const field of [CONFIG.AI_JEV_ENDPOINT_PREF, CONFIG.AI_JEV_API_KEY_PREF, CONFIG.AI_JEV_MODEL_PREF, CONFIG.AI_JEV_CATEGORY_PROVIDER_PREF,
     CONFIG.AI_JEV_CATEGORY_SOURCE_PREF, CONFIG.AI_JEV_PREVIEW_PREF, CONFIG.AI_JEV_CONFIDENCE_PREF]) setHidden(findPrefRow(dialog, field), !jev);
+  setHidden(findPrefRow(dialog, CONFIG.AI_JEV_CATEGORY_PROVIDER_PREF), !needsCategoryProvider);
   setHidden(dialog.querySelector(".zao-jev-category-settings"), !jev);
   setHidden(findSeparatorContainer(dialog, "Decision Quick Sort"), !jev);
   for (const [provider, fields] of Object.entries({
     openai: [CONFIG.AI_OPENAI_ENDPOINT_PREF, CONFIG.AI_OPENAI_API_KEY_PREF, CONFIG.AI_OPENAI_MODEL_PREF],
     gemini: [CONFIG.AI_GEMINI_API_KEY_PREF, CONFIG.AI_GEMINI_MODEL_PREF],
     custom: [CONFIG.AI_CUSTOM_ENDPOINT_PREF, CONFIG.AI_CUSTOM_API_KEY_PREF, CONFIG.AI_CUSTOM_MODEL_PREF, CONFIG.AI_CUSTOM_FORMAT_PREF],
-  })) for (const field of fields) setHidden(findPrefRow(dialog, field), engine !== provider && !(jev && categoryProvider === provider));
+  })) for (const field of fields) setHidden(findPrefRow(dialog, field), engine !== provider && !(needsCategoryProvider && categoryProvider === provider));
+  setHidden(findSeparatorContainer(dialog, "Remote Provider Settings"),
+    !remote && !(needsCategoryProvider && ["openai", "gemini", "custom"].includes(categoryProvider)));
+  const modeRow = findPrefRow(dialog, CONFIG.AI_SORT_MODE_PREF);
+  let modeNote = dialog.querySelector(".zao-sort-mode-note");
+  if (!modeNote && modeRow) {
+    modeNote = h("p", { class: "zao-pref-description zao-sort-mode-note",
+      text: "Full AI regroups all eligible tabs. Saved rules stay unchanged." });
+    modeRow.parentNode.insertBefore(modeNote, modeRow.nextSibling);
+  }
+  if (modeNote) modeNote.hidden = !aiEnabled || jev || !fullAI;
   setNewGroupOptionsForEngine(dialog, engine);
-  for (const prefName of DROPDOWN_PREFS) syncCustomDropdown(dialog, prefName);
+  for (const prefName of DROPDOWN_PREFS) syncSettingsSelect(dialog, prefName);
   alignSettingRows(dialog);
 };
 
-// First-time AI engine warning modals.
-//
-// Each engine (Local, Ollama) has its own one-shot warning that fires when
-// the user picks it from the dropdown for the first time. Acknowledgement is
-// recorded in a per-engine pref so each modal only ever appears once.
-//
-// The modals do NOT re-fire on settings reopen — that would be too
-// aggressive. If the user ESC's, the way to re-see is to switch engines
-// off and back.
-//
-// The "I Understand" button is disabled for 3 seconds with a live countdown
-// in the label so the user has to actually read the warning before clicking.
-const COUNTDOWN_SECONDS = 3;
-
-// Build + show a warning modal. `contentNodes` are appended to the dialog
-// body in order, before the action button. `ackPref` is the pref key whose
-// boolean tracks acknowledgement (skip if true, set true on confirm).
-const showAckModal = ({ ackPref, contentNodes, logTag }) => {
-  let alreadyAck = false;
-  try { alreadyAck = Services.prefs.getBoolPref(ackPref, false); } catch {}
-  if (alreadyAck) {
-    return;
-  }
-  if (document.querySelector(".zao-warning-dialog[open]")) {
-    return;
-  }
-
-  const modal = h("dialog", { class: "zao-warning-dialog" });
-  for (const n of contentNodes) modal.appendChild(n);
-
-  const actions = h("div", { class: "zao-warning-actions" });
-  const btn = h("button", { class: "zao-warning-confirm" });
-  btn.type = "button";
-  btn.setAttribute("disabled", "true");
-  let remaining = COUNTDOWN_SECONDS;
-  const updateLabel = () => {
-    btn.textContent = remaining > 0 ? `${remaining}  I Understand` : "I Understand";
-  };
-  updateLabel();
-  const tick = setInterval(() => {
-    remaining--;
-    if (remaining <= 0) {
-      clearInterval(tick);
-      btn.removeAttribute("disabled");
-    }
-    updateLabel();
-  }, 1000);
-
-  btn.addEventListener("click", () => {
-    if (btn.hasAttribute("disabled")) return;
-    try { Services.prefs.setBoolPref(ackPref, true); }
-    catch (e) { console.warn(`${LOG} failed to set ${ackPref}:`, e); }
-    try { modal.close(); } catch {}
-    modal.remove();
-  });
-  // On ESC / external close, stop the countdown so it doesn't keep firing
-  // against a detached DOM node.
-  modal.addEventListener("close", () => { clearInterval(tick); });
-
-  actions.appendChild(btn);
-  modal.appendChild(actions);
-  // Append to documentElement (top-level), NOT inside Sine's dialog. Nested
-  // <dialog>.showModal() doesn't reliably layer above the parent and can
-  // get clipped by its boundaries.
-  document.documentElement.appendChild(modal);
-  try {
-    modal.showModal();
-  } catch (e) {
-    console.warn(`${LOG} [${logTag}] showModal() failed — falling back to confirm():`, e);
-    modal.remove();
-  }
-};
-
-const maybeShowOllamaWarning = () => {
-  const title = h("h3", { class: "zao-warning-title", text: "Heads up: Ollama runs on your machine" });
-
-  const lead = h("p", { class: "zao-warning-lead" });
-  lead.appendChild(document.createTextNode("Ollama uses your computer's "));
-  lead.appendChild(h("strong", { text: "RAM and VRAM" }));
-  lead.appendChild(document.createTextNode(" to run AI models."));
-
-  const list = h("ul", { class: "zao-warning-list" });
-
-  const li1 = h("li");
-  li1.appendChild(h("strong", { text: "Risk: " }));
-  li1.appendChild(document.createTextNode("a model too big for your hardware can slow or crash your system."));
-
-  const li2 = h("li");
-  li2.appendChild(h("strong", { text: "Safe default: " }));
-  li2.appendChild(document.createTextNode("qwen2.5:1.5b (~1 GB) — runs on most machines."));
-
-  const li3 = h("li");
-  li3.appendChild(h("strong", { text: "Going bigger? " }));
-  const link = h("a", { class: "zao-warning-link", text: "See the model guide" });
-  link.href = "https://github.com/nggurbanov/OpenTabSort-Zen";
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  li3.appendChild(link);
-  li3.appendChild(document.createTextNode(" first."));
-
-  list.appendChild(li1);
-  list.appendChild(li2);
-  list.appendChild(li3);
-
-  showAckModal({
-    ackPref: CONFIG.OLLAMA_ACKNOWLEDGED_PREF,
-    contentNodes: [title, lead, list],
-    logTag: "ollama-warning",
-  });
-};
-
-const maybeShowLocalWarning = () => {
-  const title = h("h3", { class: "zao-warning-title", text: "Heads up: Local AI runs inside Firefox" });
-
-  const lead = h("p", { class: "zao-warning-lead" });
-  lead.appendChild(document.createTextNode("The Local engine uses "));
-  lead.appendChild(h("strong", { text: "Firefox's built-in ML model" }));
-  lead.appendChild(document.createTextNode(" — no extra setup, but it runs inside the browser."));
-
-  const list = h("ul", { class: "zao-warning-list" });
-
-  const li1 = h("li");
-  li1.appendChild(h("strong", { text: "Risk: " }));
-  li1.appendChild(document.createTextNode("with hundreds of tabs, the AI pass can briefly spike CPU and lag the browser."));
-
-  const li2 = h("li");
-  li2.appendChild(h("strong", { text: "Limited: " }));
-  li2.appendChild(document.createTextNode("creates simpler hostname/intent-based groups than Ollama."));
-
-  const li3 = h("li");
-  li3.appendChild(h("strong", { text: "Want stronger results? " }));
-  li3.appendChild(document.createTextNode("Try Ollama for cluster-and-name. "));
-  const link = h("a", { class: "zao-warning-link", text: "See the model guide" });
-  link.href = "https://github.com/nggurbanov/OpenTabSort-Zen";
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  li3.appendChild(link);
-  li3.appendChild(document.createTextNode("."));
-
-  list.appendChild(li1);
-  list.appendChild(li2);
-  list.appendChild(li3);
-
-  showAckModal({
-    ackPref: CONFIG.LOCAL_ACKNOWLEDGED_PREF,
-    contentNodes: [title, lead, list],
-    logTag: "local-warning",
-  });
-};
-
-// Re-run the show/hide pass whenever the engine pref flips. One observer per
-// preferences-window context, torn down with the rest on window unload.
+// Keep every select and dependent row in sync with external preference edits.
+// One observer per preferences-window context, removed on window unload.
 let enginePrefObserver = null;
 const setupEnginePrefObserver = () => {
   if (enginePrefObserver) return;
   enginePrefObserver = {
     observe(_subject, topic, data) {
       if (topic !== "nsPref:changed") return;
-      if (data !== CONFIG.AI_ENGINE_PREF) return;
-      const engine = getAIEngine();
+      if (!DROPDOWN_PREFS.includes(data)) return;
       for (const d of document.querySelectorAll(".sineItemPreferenceDialog")) {
         if (isOurDialog(d)) {
           updateConditionalFields(d);
-          // First-time engine warning. Each engine has its own one-shot
-          // acknowledgement pref; neither modal re-fires once acknowledged.
-          if (engine === "ollama") maybeShowOllamaWarning();
-          else if (engine === "local") maybeShowLocalWarning();
+          d.querySelector(".zao-simple-settings")?._zaoRefresh?.();
           break;
         }
       }
     },
   };
-  Services.prefs.addObserver(CONFIG.AI_ENGINE_PREF, enginePrefObserver);
+  for (const prefName of DROPDOWN_PREFS) Services.prefs.addObserver(prefName, enginePrefObserver);
 };
 
 const teardownEnginePrefObserver = () => {
   if (!enginePrefObserver) return;
-  try { Services.prefs.removeObserver(CONFIG.AI_ENGINE_PREF, enginePrefObserver); } catch {}
+  for (const prefName of DROPDOWN_PREFS) {
+    try { Services.prefs.removeObserver(prefName, enginePrefObserver); } catch {}
+  }
   enginePrefObserver = null;
 };
 
@@ -786,44 +499,60 @@ const insertAfter = (parent, newNode, refNode) => {
 };
 
 const performInject = (dialog) => {
-  if (dialog.querySelector(".zao-rules-editor")) return;
-
+  if (dialog.querySelector(".zao-simple-settings")) return;
   const content = dialog.querySelector(".sineItemPreferenceDialogContent");
   if (!content) return;
 
-  // Seed the rules pref with defaults on first open if currently empty.
-  // keepIncomplete: true so a blank row the user added in a previous session
-  // (saved as `{name:"", domains:[]}`) reappears in the editor and can be
-  // filled in. The wand-click pipeline (`loadRules`) still filters these out.
-  let initial = readRulesPref({ keepIncomplete: true });
-  if (initial === null) {
-    initial = JSON.parse(JSON.stringify(DEFAULT_RULES));
-    writeRulesPref(initial);
-  }
-
-  const rulesEditor = buildRulesEditor(initial);
-  const skipEditor = buildSkipDomainsEditor();
-  const customIconsEditor = buildCustomIconsEditor();
-  const backupSection = buildBackupRestoreSection();
-
-  // Each section's content lives as a sibling immediately after its Sine
-  // separator. injectSectionDescriptions runs next and will insert its
-  // description paragraph BETWEEN the separator and our content (because it
-  // checks `nextElementSibling` for a description and inserts at separator+1
-  // when not found).
-  insertAfter(content, rulesEditor, findSeparatorContainer(dialog, "Group Rules"));
-  insertAfter(content, skipEditor, findSeparatorContainer(dialog, "Skip Domains"));
-  insertAfter(content, customIconsEditor, findSeparatorContainer(dialog, "Look & Feel"));
-  insertAfter(content, backupSection, findSeparatorContainer(dialog, "Backup & Restore"));
-  insertAfter(content, buildSavedCategoryEditor(), findSeparatorContainer(dialog, "Decision Quick Sort"));
-
-  tagSeparatorContainers(dialog);
-  injectSectionDescriptions(dialog);
-  installCustomDropdowns(dialog);
+  const advanced = h("details", { class: "zao-advanced-settings" });
+  advanced.appendChild(h("summary", { text: "Advanced & saved data" }));
+  const advancedContent = h("div", { class: "zao-advanced-content" });
+  advanced.appendChild(advancedContent);
+  // Move Sine's existing controls without changing any saved preference.
+  for (const child of [...content.children]) advancedContent.appendChild(child);
+  const simple = buildSimpleSettings({ onChange: () => updateConditionalFields(dialog) });
+  content.append(simple, advanced);
+  let initialized = false, loading = false;
+  advanced.addEventListener("toggle", async () => {
+    if (!advanced.open) { simple._zaoRefresh(); return; }
+    if (initialized || loading) return;
+    loading = true;
+    try {
+      const [widget, colors, categories] = await Promise.all([
+        import("./widget.mjs"), import("./color-picker.mjs"), import("./jev-ui.mjs"),
+      ]);
+      advancedWidget = widget;
+      if (!dialog.isConnected || !advanced.open) return;
+      colors.fetchZenColorsFromBrowser();
+      const { buildRulesEditor, buildSkipDomainsEditor, buildCustomIconsEditor, buildBackupRestoreSection } = widget;
+      const { buildSavedCategoryEditor } = categories;
+      const initial = readRulesPref({ keepIncomplete: true }) || [];
+      const insert = (node, prefix) => insertAfter(advancedContent, node, findSeparatorContainer(advancedContent, prefix));
+      insert(buildRulesEditor(initial), "Group Rules");
+      insert(buildSkipDomainsEditor(), "Skip Domains");
+      insert(buildCustomIconsEditor(), "Look & Feel");
+      insert(buildBackupRestoreSection(), "Backup & Restore");
+      insert(buildSavedCategoryEditor(), "Decision Quick Sort");
+      const run = h("button", { class: "zao-backup-btn", text: "Run advanced sorting" });
+      run.type = "button";
+      run.addEventListener("click", () => {
+        Services.wm.getMostRecentWindow("navigator:browser")?.OpenTabSortZen?.handleLegacyOrganizeClick?.();
+        dialog.close();
+      });
+      const note = h("p", { class: "zao-pref-description",
+        text: "Optional tools and settings from the previous sorting workflow. The wand uses AI and leaves this saved data unchanged." });
+      advancedContent.insertBefore(note, advancedContent.firstChild);
+      advancedContent.insertBefore(run, note.nextSibling);
+      tagSeparatorContainers(dialog);
+      injectSectionDescriptions(dialog);
+      installSettingsSelects(dialog);
+      updateConditionalFields(dialog);
+      initialized = true;
+    } catch (error) {
+      console.warn(`${LOG} advanced tools could not load:`, error);
+    } finally { loading = false; }
+  });
   setupEnginePrefObserver();
   updateConditionalFields(dialog);
-  setupAIEngineChangeFallback(dialog);
-  console.log(`${LOG} injected rules + skip + backup sections into Sine settings dialog`);
 };
 
 // Sine's loadPrefs() is async — the dialog is added to DOM before its content is
@@ -837,8 +566,11 @@ const onOurDialogFound = (dialog) => {
   // Child mutations from our editors must not refresh the dialog: category
   // refresh replaces its children and would feed this observer indefinitely.
   // Reopening is handled by the separate observer of the dialog's open attribute.
-  if (dialog.querySelector(".zao-rules-editor")) return;
+  if (dialog.querySelector(".zao-simple-settings")) return;
 
+  if (dialogStates.has(dialog)) return;
+  const state = { watcher: null, pollTimer: null };
+  dialogStates.set(dialog, state);
   if (!dialog._zaoOpenWatcher) {
     const watcher = new MutationObserver(() => {
       if (dialog.hasAttribute("open")) {
@@ -846,11 +578,13 @@ const onOurDialogFound = (dialog) => {
         editor?._zaoRefresh?.("dialog open attr");
         dialog.querySelector(".zao-jev-category-settings")?._zaoRefresh?.();
         // Re-sync visibility — Sine may have re-rendered controls on reopen.
+        dialog.querySelector(".zao-simple-settings")?._zaoRefresh?.();
         updateConditionalFields(dialog);
       }
     });
     watcher.observe(dialog, { attributes: true, attributeFilter: ["open"] });
     dialog._zaoOpenWatcher = watcher;
+    state.watcher = watcher;
   }
 
   injectStylesheet();
@@ -859,8 +593,8 @@ const onOurDialogFound = (dialog) => {
   const poll = () => {
     // If the dialog was removed mid-poll (user closed the prefs page), abandon —
     // querying a detached node burns CPU and pollutes the console with warnings.
-    if (!dialog.isConnected) return;
-    if (dialog.querySelector(".zao-rules-editor")) return;
+    if (!dialog.isConnected) { releaseDialog(dialog); return; }
+    if (dialog.querySelector(".zao-simple-settings")) return;
     let separator = null;
     for (const lbl of dialog.querySelectorAll(".separator-label")) {
       const text = lbl.textContent.trim();
@@ -881,7 +615,7 @@ const onOurDialogFound = (dialog) => {
       catch (e) { console.error(`${LOG} inject failed:`, e); }
       return;
     }
-    setTimeout(poll, CONFIG.INJECT_POLL_INTERVAL_MS);
+    state.pollTimer = setTimeout(poll, CONFIG.INJECT_POLL_INTERVAL_MS);
   };
   poll();
 };
@@ -889,11 +623,44 @@ const onOurDialogFound = (dialog) => {
 // Watch for Sine's per-mod settings dialog. Identify by the presence of a
 // "Group Rules" separator inside any .sineItemPreferenceDialog — robust against
 // Sine's mod-id attribute scheme changing across versions.
+let setupRequestObserver = null;
+let setupRequestTimer = null;
+const handleSetupRequest = () => {
+  clearTimeout(setupRequestTimer);
+  const request = Services.prefs.getStringPref(CONFIG.SETUP_REQUEST_PREF, "");
+  if (!request) return;
+  let attempts = 0;
+  const open = () => {
+    if (Services.prefs.getStringPref(CONFIG.SETUP_REQUEST_PREF, "") !== request) return;
+    const category = document.getElementById("category-sine-mods");
+    if (category && !document.getElementById("SineModsCategory")?.getBoundingClientRect().height) {
+      (category.shadowRoot?.querySelector("button") || category).click();
+    }
+    const item = [...document.querySelectorAll(".sineItem")].find((item) =>
+      item.querySelector(".sineItemTitle")?.textContent.includes("OpenTabSort"));
+    const configure = item?.querySelector(".sineItemConfigureButton");
+    const dialog = item?.querySelector(".sineItemPreferenceDialog");
+    if (configure?.getBoundingClientRect().height && !dialog?.hasAttribute("open")) configure.click();
+    const simple = dialog?.querySelector(".zao-simple-settings");
+    if (simple && dialog.getBoundingClientRect().height) {
+      const advanced = dialog.querySelector(".zao-advanced-settings");
+      if (advanced) advanced.open = false;
+      dialog.scrollTop = 0;
+      simple.querySelector("select")?.focus();
+      if (Services.prefs.getStringPref(CONFIG.SETUP_REQUEST_PREF, "") === request) {
+        Services.prefs.clearUserPref(CONFIG.SETUP_REQUEST_PREF);
+      }
+      setupRequestTimer = null;
+      return;
+    }
+    if (++attempts < 100) setupRequestTimer = setTimeout(open, 100);
+    else setupRequestTimer = null;
+  };
+  open();
+};
+
 export const setupSettingsObserver = () => {
   if (settingsObserver) return;
-
-  // Pull Zen's live tab-group palette so the picker matches the native modal exactly.
-  fetchZenColorsFromBrowser();
 
   const scanForOurDialog = (root) => {
     if (!root || root.nodeType !== 1) return;
@@ -906,6 +673,9 @@ export const setupSettingsObserver = () => {
   };
 
   settingsObserver = new MutationObserver((muts) => {
+    for (const dialog of dialogStates.keys()) {
+      if (!dialog.isConnected) releaseDialog(dialog);
+    }
     for (const m of muts) {
       for (const node of m.addedNodes) {
         scanForOurDialog(node);
@@ -919,6 +689,11 @@ export const setupSettingsObserver = () => {
     }
   });
   settingsObserver.observe(document.body, { childList: true, subtree: true });
+  setupRequestObserver = { observe: (_subject, topic) => {
+    if (topic === "nsPref:changed") handleSetupRequest();
+  } };
+  Services.prefs.addObserver(CONFIG.SETUP_REQUEST_PREF, setupRequestObserver);
+  handleSetupRequest();
 
   // Catch any dialog already in the DOM at init time.
   document.querySelectorAll(".sineItemPreferenceDialog").forEach((d) => {
@@ -928,11 +703,18 @@ export const setupSettingsObserver = () => {
 };
 
 export const teardownSettingsObserver = () => {
+  clearTimeout(setupRequestTimer);
+  setupRequestTimer = null;
+  if (setupRequestObserver) {
+    try { Services.prefs.removeObserver(CONFIG.SETUP_REQUEST_PREF, setupRequestObserver); } catch {}
+    setupRequestObserver = null;
+  }
   if (settingsObserver) {
     settingsObserver.disconnect();
     settingsObserver = null;
   }
+  for (const dialog of dialogStates.keys()) releaseDialog(dialog);
   teardownEnginePrefObserver();
-  teardownRulesPrefObserver();
-  teardownSkipPrefObserver();
+  advancedWidget?.teardownRulesPrefObserver();
+  advancedWidget?.teardownSkipPrefObserver();
 };

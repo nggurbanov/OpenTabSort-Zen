@@ -10,6 +10,7 @@
 import { CONFIG, LOG } from "./config.mjs";
 import { isOllamaWarmupEnabled } from "./rules.mjs";
 import { showToast } from "./ui-toast.mjs";
+import { getActiveSortSignal } from "./sort-session.mjs";
 
 const PING_TIMEOUT_MS = 3000;
 // Classification calls: generous because the FIRST request after the daemon
@@ -40,13 +41,18 @@ export const normalizeOllamaHost = (host) => {
 // AbortController-based timeout — without this a fetch to a down daemon
 // would hang until the OS TCP timeout (often 60s+), blocking the tidy click.
 const fetchWithTimeout = async (url, opts = {}, timeoutMs = PING_TIMEOUT_MS, consume = (response) => response) => {
+  const signal = opts.signal ?? getActiveSortSignal();
+  signal?.throwIfAborted();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(abort, timeoutMs);
   try {
     const response = await fetch(url, { ...opts, signal: controller.signal });
     return await consume(response);
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
   }
 };
 
@@ -55,7 +61,10 @@ const pingOllama = async (host) => {
   const base = normalizeOllamaHost(host);
   try {
     const result = await fetchWithTimeout(`${base}/api/tags`, { cache: "no-store" }, PING_TIMEOUT_MS, async (response) => {
-      if (!response.ok) return { error: `HTTP ${response.status}` };
+      if (!response.ok) {
+        try { await response.body?.cancel(); } catch {}
+        return { error: `HTTP ${response.status}` };
+      }
       return { data: await response.json() };
     });
     if (result.error) return { ok: false, error: result.error };
@@ -63,6 +72,7 @@ const pingOllama = async (host) => {
     const models = Array.isArray(data?.models) ? data.models : [];
     return { ok: true, models };
   } catch (e) {
+    getActiveSortSignal()?.throwIfAborted();
     return {
       ok: false,
       error: e.name === "AbortError" ? `timeout after ${PING_TIMEOUT_MS}ms` : "Ollama network request failed",
@@ -102,11 +112,12 @@ export const checkOllamaReady = async (host, model) => {
  *
  * The caller decides whether `parsed` is the right shape (object vs array).
  */
-export const ollamaGenerateJson = async (host, model, prompt, maxTokens = 4096) => {
+export const ollamaGenerateJson = async (host, model, prompt, maxTokens = 4096, signal = getActiveSortSignal()) => {
   const base = normalizeOllamaHost(host);
   try {
     return await fetchWithTimeout(`${base}/api/generate`, {
       method: "POST",
+      signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model, prompt, stream: false, format: "json",
         options: { temperature: 0, seed: 42, num_predict: Math.min(4096, Math.max(64, Number.isFinite(maxTokens) ? Math.trunc(maxTokens) : 4096)) },
@@ -128,6 +139,7 @@ export const ollamaGenerateJson = async (host, model, prompt, maxTokens = 4096) 
       catch { return { ok: false, errorType: "parse", error: "Ollama returned invalid classification JSON" }; }
     });
   } catch (error) {
+    signal?.throwIfAborted();
     return { ok: false, errorType: "network", error: error.name === "AbortError" ? `timeout after ${GENERATE_TIMEOUT_MS}ms` : "Ollama network request failed" };
   }
 };
@@ -152,7 +164,11 @@ export const warmupOllama = async (host, model) => {
           ...withKeepAlive(),
         }),
       },
-      WARMUP_TIMEOUT_MS
+      WARMUP_TIMEOUT_MS,
+      async (response) => {
+        try { await response.body?.cancel(); } catch {}
+        return response;
+      }
     );
     if (res.ok) {
       console.log(`${LOG} Ollama: warmed up "${model}" on ${base} in ${Math.round(performance.now() - t0)}ms`);

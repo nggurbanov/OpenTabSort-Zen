@@ -346,7 +346,14 @@ export const teardownTabGroupContextMenu = () => {
 // collapsed-set pref, and re-apply its rule color. Used both as the
 // TabGroupCreate event handler (for newly-created groups) and at install
 // time (for groups Zen restored before our script loaded).
-const applyTabGroupRestoreState = (group) => {
+const applyTabGroupRestoreState = (group, state) => {
+  const defer = (action) => {
+    const timer = setTimeout(() => {
+      state.timers.delete(timer);
+      if (state.active) action();
+    }, 0);
+    state.timers.add(timer);
+  };
   try {
     if (!group?.isConnected) return;
     const label = group.getAttribute?.("label");
@@ -358,7 +365,7 @@ const applyTabGroupRestoreState = (group) => {
     // CSS rule relies on).
     const collapsedSet = readCollapsedGroupsPref();
     if (collapsedSet.has(label)) {
-      setTimeout(() => {
+      defer(() => {
         if (!group.isConnected) return;
         let applied = false;
         try { group.collapsed = true; applied = true; } catch {}
@@ -372,7 +379,7 @@ const applyTabGroupRestoreState = (group) => {
             }
           }
         }
-      }, 0);
+      });
     }
 
     const rules = readRulesPref() || [];
@@ -380,9 +387,9 @@ const applyTabGroupRestoreState = (group) => {
     if (rule) {
       // Defer one tick so Zen's own color setup (which runs synchronously
       // during group construction) is done before we override.
-      setTimeout(() => {
+      defer(() => {
         if (group.isConnected) applyGroupAppearance(group, rule);
-      }, 0);
+      });
     }
   } catch (e) {
     console.error(`${LOG} applyTabGroupRestoreState error:`, e);
@@ -391,27 +398,39 @@ const applyTabGroupRestoreState = (group) => {
 
 export const setupTabGroupCreateHook = () => {
   if (typeof gBrowser === "undefined" || !gBrowser.tabContainer) return;
-  if (gBrowser.tabContainer._zaoTabGroupCreateHook) return;
-
-  const handler = (event) => applyTabGroupRestoreState(event.target);
-  gBrowser.tabContainer.addEventListener("TabGroupCreate", handler);
-  gBrowser.tabContainer._zaoTabGroupCreateHook = handler;
-
-  // Already-existing tab-groups — session restore likely fired
-  // TabGroupCreate BEFORE we installed the listener. Process them now.
-  const existing = document.querySelectorAll("tab-group");
-  if (existing.length > 0) {
-    console.log(`${LOG} TabGroupCreate hook: applying restore state to ${existing.length} pre-existing tab-group(s)`);
-    existing.forEach(applyTabGroupRestoreState);
-  }
-  console.log(`${LOG} TabGroupCreate hook installed`);
+  const container = gBrowser.tabContainer;
+  if (window._zaoTabGroupCreateState?.container === container) return;
+  teardownTabGroupCreateHook();
+  const state = { container, timers: new Set(), active: true };
+  const handler = (event) => applyTabGroupRestoreState(event.target, state);
+  state.handler = handler;
+  window._zaoTabGroupCreateState = state;
+  container.addEventListener("TabGroupCreate", handler);
+  container._zaoTabGroupCreateHook = handler;
+  // Restore groups created before this listener was installed.
+  document.querySelectorAll("tab-group").forEach((group) => applyTabGroupRestoreState(group, state));
 };
 
-// Watch every tab-group's `collapsed` attribute and persist the current set
-// of collapsed labels to the pref. Re-applied on TabGroupCreate (above) so
-// the user's collapse choices survive browser restarts.
+export const teardownTabGroupCreateHook = () => {
+  const state = window._zaoTabGroupCreateState;
+  if (!state) return;
+  state.active = false;
+  state.container.removeEventListener("TabGroupCreate", state.handler);
+  if (state.container._zaoTabGroupCreateHook === state.handler) delete state.container._zaoTabGroupCreateHook;
+  for (const timer of state.timers) clearTimeout(timer);
+  state.timers.clear();
+  delete window._zaoTabGroupCreateState;
+};
+
+// Observe the tab container, and release group observers as groups disappear.
+// The iterable map allows full teardown; removal pruning avoids retaining old
+// groups for the rest of the window's lifetime.
 export const setupCollapsedStatePersistence = () => {
-  if (window._zaoCollapseObserverInstalled) return;
+  const root = (typeof gBrowser !== "undefined" && gBrowser.tabContainer) || document.body || document.documentElement;
+  if (window._zaoCollapseObserverState?.root === root) return;
+  teardownCollapsedStatePersistence();
+  const state = { root, groups: new Map(), observer: null, active: true };
+  window._zaoCollapseObserverState = state;
   window._zaoCollapseObserverInstalled = true;
 
   const persist = (group) => {
@@ -422,40 +441,57 @@ export const setupCollapsedStatePersistence = () => {
     const had = set.has(label);
     if (isCollapsed && !had) set.add(label);
     else if (!isCollapsed && had) set.delete(label);
-    else return; // no change
+    else return;
     writeCollapsedGroupsPref(set);
   };
-
   const watch = (group) => {
-    if (group._zaoCollapseAttrObs) return;
-    const obs = new MutationObserver((muts) => {
-      for (const m of muts) {
-        if (m.type === "attributes" && m.attributeName === "collapsed") persist(group);
-      }
+    if (!state.active || !group.isConnected || state.groups.has(group)) return;
+    const observer = new MutationObserver((mutations) => {
+      if (!state.active || !group.isConnected) return;
+      if (mutations.some((mutation) => mutation.type === "attributes" && mutation.attributeName === "collapsed")) persist(group);
     });
-    obs.observe(group, { attributes: true, attributeFilter: ["collapsed"] });
-    group._zaoCollapseAttrObs = obs;
+    observer.observe(group, { attributes: true, attributeFilter: ["collapsed"] });
+    state.groups.set(group, observer);
+    group._zaoCollapseAttrObs = observer;
   };
-
-  // Existing tab-groups
-  document.querySelectorAll("tab-group").forEach(watch);
-
-  // Future tab-groups (e.g. session restore, user-created via "New Group")
-  const containerObs = new MutationObserver((muts) => {
-    for (const m of muts) {
-      for (const n of m.addedNodes) {
-        if (n.nodeType !== 1) continue;
-        if (n.tagName?.toLowerCase() === "tab-group") watch(n);
-        else n.querySelectorAll?.("tab-group").forEach(watch);
-      }
+  const visitGroups = (node, visit) => {
+    if (node.nodeType !== 1) return;
+    if (node.tagName?.toLowerCase() === "tab-group") visit(node);
+    node.querySelectorAll?.("tab-group").forEach(visit);
+  };
+  const unwatchRemoved = (group) => {
+    // DOM moves inside the same container keep their observer.
+    if (group.isConnected && root.contains(group)) return;
+    const observer = state.groups.get(group);
+    if (!observer) return;
+    observer.disconnect();
+    if (group._zaoCollapseAttrObs === observer) delete group._zaoCollapseAttrObs;
+    state.groups.delete(group);
+  };
+  root.querySelectorAll("tab-group").forEach(watch);
+  state.observer = new MutationObserver((mutations) => {
+    if (!state.active) return;
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) visitGroups(node, watch);
+      for (const node of mutation.removedNodes) visitGroups(node, unwatchRemoved);
     }
   });
-  containerObs.observe(document.body || document.documentElement, {
-    childList: true,
-    subtree: true,
-  });
+  state.observer.observe(root, { childList: true, subtree: true });
+};
 
-  console.log(`${LOG} collapsed-state persistence observer installed`);
+export const teardownCollapsedStatePersistence = () => {
+  const state = window._zaoCollapseObserverState;
+  if (state) {
+    state.active = false;
+    state.observer?.disconnect();
+    for (const [group, observer] of state.groups) {
+      observer.disconnect();
+      if (group._zaoCollapseAttrObs === observer) delete group._zaoCollapseAttrObs;
+    }
+    state.groups.clear();
+  }
+  delete window._zaoCollapseObserverState;
+  delete window._zaoCollapseObserverInstalled;
 };
 
 // ─── Pref observers ──────────────────────────────────────────────────────────

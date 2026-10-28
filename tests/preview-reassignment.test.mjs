@@ -30,6 +30,8 @@ test("reassignment uses pending live references once and retains incomplete resu
 
 class Element {
   children = [];
+  dataset = {};
+  scrollTop = 0;
   listeners = new Map();
   className = "";
   disabled = false;
@@ -40,7 +42,12 @@ class Element {
   setAttribute() {}
   showModal() {}
   close() {}
-  focus() {}
+  focus() { globalThis.document.activeElement = this; }
+  querySelectorAll(selector) {
+    const out = [];
+    const visit = (node) => { for (const child of node.children) { if (selector === "[data-zao-focus-key]" && child.dataset.zaoFocusKey) out.push(child); visit(child); } };
+    visit(this); return out;
+  }
   addEventListener(type, listener) { this.listeners.set(type, [...(this.listeners.get(type) || []), listener]); }
   async click() { for (const listener of this.listeners.get("click") || []) await listener({ target: this, stopPropagation() {} }); }
 }

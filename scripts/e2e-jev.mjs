@@ -90,9 +90,9 @@ try {
     const done = arguments[arguments.length - 1];
     const win = Services.wm.getMostRecentWindow("navigator:browser");
     win.__jevMode = ${JSON.stringify(mode)}; win.__jevRequests = 0;
-    win.OpenTabSortZen.handleOrganizeClick().then(() => done({
+    win.OpenTabSortZen.handleLegacyOrganizeClick().then(() => done({
       state: win.__jevState(), requests: win.__jevRequests,
-      status: win.document.querySelector(".zao-jev-progress span")?.textContent,
+      status: win.document.querySelector(".zao-jev-progress [role=status]")?.textContent,
       preview: !!win.document.querySelector(".zao-jev-preview"),
       saved: JSON.parse(Services.prefs.getStringPref("extensions.zen-auto-organize.ai-jev-categories-json", "{}")),
       selectedUrl: win.gBrowser.selectedBrowser.currentURI.spec,
@@ -154,7 +154,7 @@ try {
       [...modal.querySelectorAll("button")].find((button) => button.textContent === ${JSON.stringify(accept ? "Sort now" : "Cancel")}).click();
     });
     observer.observe(win.document.documentElement, { subtree: true, childList: true, attributes: true });
-    win.OpenTabSortZen.handleOrganizeClick().then(() => {
+    win.OpenTabSortZen.handleLegacyOrganizeClick().then(() => {
       observer.disconnect(); done({ before, after: win.__jevState(), requests: win.__jevRequests,
         categories: JSON.parse(Services.prefs.getStringPref("extensions.zen-auto-organize.ai-jev-categories-json", "{}"))[win.gZenWorkspaces.activeWorkspace],
         hasPreview: !!win.document.querySelector(".zao-jev-preview"),
@@ -169,6 +169,19 @@ try {
   assert.equal(accepted.error, undefined); assert.ok(accepted.requests > 0); assert.equal(accepted.categories[0].name, "WORK revised");
   assert.equal(accepted.hasPreview, false);
   console.log("preview acceptance: edited category saved and applied");
+  const primary = await client.executeAsync(`
+    const done = arguments[arguments.length - 1]; const win = Services.wm.getMostRecentWindow("navigator:browser");
+    Services.prefs.setBoolPref("extensions.zen-auto-organize.ai-review-before-apply", false);
+    const before = win.__jevState();
+    const saved = Services.prefs.getStringPref("extensions.zen-auto-organize.ai-jev-categories-json", "{}");
+    win.OpenTabSortZen.handleOrganizeClick().then(() => {
+      const afterSaved = Services.prefs.getStringPref("extensions.zen-auto-organize.ai-jev-categories-json", "{}");
+      [...win.document.querySelectorAll(".zao-sort-progress button")].find((node) => node.textContent === "Undo sort" && !node.hidden)?.click();
+      done({ preserved: saved === afterSaved, before, restored: win.__jevState() });
+    }).catch((error) => done({ error: String(error) }));
+  `);
+  assert.equal(primary.error, undefined); assert.equal(primary.preserved, true); assert.deepEqual(primary.restored, primary.before);
+  console.log("primary decision sort: fresh suggestions leave saved advanced categories unchanged; Undo restores prior layout");
   if (process.env.JEV_QA_SETTINGS === "1") {
     await client.command("Marionette:SetContext", { value: "content" });
     const handles = await client.command("WebDriver:GetWindowHandles", {});

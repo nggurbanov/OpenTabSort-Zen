@@ -355,13 +355,12 @@ export const getOllamaModel = () => {
   }
 };
 
-// Default true (low-latency clicks). Off saves idle VRAM, but the first click
-// after Ollama's ~5min idle unload pays a cold-start cost.
+// Keep startup and idle use light by default. Existing explicit opt-in remains valid.
 export const isOllamaWarmupEnabled = () => {
   try {
-    return Services.prefs.getBoolPref(CONFIG.AI_OLLAMA_WARMUP_PREF, true);
+    return Services.prefs.getBoolPref(CONFIG.AI_OLLAMA_WARMUP_PREF, false);
   } catch {
-    return true;
+    return false;
   }
 };
 

@@ -124,12 +124,12 @@ tab-group.zao-has-custom-icon .tab-group-label::before {
 
 .zao-control-row,
 .zao-action-pref {
-  --zao-pref-label-column: minmax(340px, 620px);
+  --zao-pref-label-column: minmax(220px, 1fr);
 }
 
 .zao-control-row {
   display: grid !important;
-  grid-template-columns: var(--zao-pref-label-column) auto !important;
+  grid-template-columns: var(--zao-pref-label-column) minmax(180px, 1fr) !important;
   justify-content: start !important;
   column-gap: 16px !important;
   align-items: center !important;
@@ -149,91 +149,31 @@ tab-group.zao-has-custom-icon .tab-group-label::before {
 }
 
 .zao-custom-dropdown {
-  position: relative;
-  justify-self: start;
+  min-width: 0;
+  max-width: 100%;
 }
-
-.zao-custom-dropdown-button {
-  min-height: 38px;
-  max-width: min(620px, 58vw);
-  padding: 0 34px 0 16px;
-  border: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, CanvasText 13%, transparent);
-  color: CanvasText;
-  font: inherit;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  position: relative;
-}
-
-.zao-custom-dropdown-button:hover,
-.zao-custom-dropdown.zao-open > .zao-custom-dropdown-button {
-  background: color-mix(in srgb, CanvasText 18%, transparent);
-  border-color: color-mix(in srgb, CanvasText 18%, transparent);
-}
-
-.zao-custom-dropdown-button::after {
-  content: "";
-  position: absolute;
-  inset-inline-end: 12px;
-  top: 50%;
-  width: 6px;
-  height: 6px;
-  border-inline-end: 1.5px solid currentColor;
-  border-block-end: 1.5px solid currentColor;
-  transform: translateY(-65%) rotate(45deg);
-  opacity: 0.85;
-}
-
-.zao-custom-dropdown-menu {
-  display: none;
-  position: absolute;
-  z-index: 10000;
-  inset-inline-end: 0;
-  top: calc(100% + 4px);
+.zao-settings-select {
   box-sizing: border-box;
-  min-width: 100%;
-  width: min(calc((var(--zao-dropdown-menu-ch, 32) * 1ch) + 72px), calc(100vw - 48px));
-  max-width: min(760px, calc(100vw - 48px));
-  max-height: min(360px, 55vh);
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 6px;
-  border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
-  border-radius: 8px;
-  background: Canvas;
-  box-shadow: 0 12px 30px color-mix(in srgb, #000 35%, transparent);
-}
-
-.zao-custom-dropdown.zao-open > .zao-custom-dropdown-menu {
-  display: grid;
-  gap: 2px;
-}
-
-.zao-custom-dropdown-item {
+  min-height: 34px;
   width: 100%;
-  box-sizing: border-box;
-  padding: 8px 10px;
-  border: 0;
+  max-width: min(620px, 56vw);
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
   border-radius: 6px;
-  background: transparent;
-  color: CanvasText;
+  background: Field;
+  color: FieldText;
   font: inherit;
-  text-align: start;
-  white-space: nowrap;
 }
-
-.zao-custom-dropdown-item:hover,
-.zao-custom-dropdown-item:focus-visible,
-.zao-custom-dropdown-item.zao-selected {
-  background: color-mix(in srgb, CanvasText 14%, transparent);
+.zao-settings-select:focus-visible,
+.zao-rules-search:focus-visible,
+.zao-row-grip:focus-visible,
+.zao-rules-clear:focus-visible {
+  outline: 2px solid AccentColor;
+  outline-offset: 2px;
 }
-
-.zao-custom-dropdown-item.zao-option-hidden {
-  display: none;
+.zao-sort-mode-note[hidden],
+.zao-rules-clear[hidden] {
+  display: none !important;
 }
 
 .zao-control-row > input {
@@ -248,7 +188,7 @@ tab-group.zao-has-custom-icon .tab-group-label::before {
 
 .zao-checkbox-right {
   display: grid !important;
-  grid-template-columns: var(--zao-pref-label-column) auto !important;
+  grid-template-columns: var(--zao-pref-label-column) minmax(180px, 1fr) !important;
   justify-content: start !important;
   column-gap: 16px !important;
   align-items: center !important;
@@ -302,7 +242,7 @@ tab-group.zao-has-custom-icon .tab-group-label::before {
 .zao-add-row {
   display: grid;
   /* grip | color/icon | category | domains | remove */
-  grid-template-columns: 20px 52px 180px 1fr 28px;
+  grid-template-columns: 28px 52px minmax(120px, 180px) minmax(0, 1fr) 28px;
   gap: 10px;
   padding: 8px 12px;
   align-items: center;
@@ -312,6 +252,13 @@ tab-group.zao-has-custom-icon .tab-group-label::before {
    Only this element is `draggable`; the rest of the row stays clickable for
    editing inputs / pills without triggering a drag. */
 .zao-row-grip {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  min-width: 24px;
+  min-height: 28px;
+  padding: 0;
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
@@ -319,8 +266,12 @@ tab-group.zao-has-custom-icon .tab-group-label::before {
   line-height: 1;
   letter-spacing: -3px;
   text-align: center;
-  opacity: 0.35;
+  opacity: 0.75;
   transition: opacity 120ms;
+}
+.zao-row-grip:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 .zao-row-grip:hover {
   opacity: 0.85;
@@ -383,7 +334,7 @@ tab-group.zao-has-custom-icon .tab-group-label::before {
 
 .zao-action-pref {
   display: grid !important;
-  grid-template-columns: var(--zao-pref-label-column) auto !important;
+  grid-template-columns: var(--zao-pref-label-column) minmax(180px, 1fr) !important;
   justify-content: start !important;
   column-gap: 16px !important;
   row-gap: 8px !important;
@@ -442,6 +393,35 @@ tab-group.zao-has-custom-icon .tab-group-label::before {
   }
 }
 
+.zao-rules-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+}
+.zao-rules-search {
+  box-sizing: border-box;
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 6px;
+  background: Field;
+  color: FieldText;
+  font: inherit;
+}
+.zao-rules-count { font-variant-numeric: tabular-nums; }
+.zao-rules-clear {
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 6px;
+  background: ButtonFace;
+  color: ButtonText;
+  font: inherit;
+}
+.zao-rules-help { margin: 0; padding: 0 12px 12px; line-height: 1.4; }
+.zao-empty { padding: 16px 12px; }
 .zao-header {
   background: color-mix(in srgb, currentColor 8%, transparent);
   font-size: 11px;
@@ -1418,3 +1398,83 @@ dialog.zao-warning-dialog::backdrop {
 }
 .zao-jev-preview::backdrop { background: #0006; }
 .zao-jev-preview > button { margin-top: 12px; }
+
+@media (max-width: 700px) {
+  .zao-our-dialog .zao-control-row,
+  .zao-our-dialog .zao-action-pref {
+    grid-template-columns: minmax(0, 1fr) !important;
+    row-gap: 8px;
+  }
+  .zao-our-dialog .zao-checkbox-right .zao-checkbox-control {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    transform: none !important;
+  }
+  .zao-settings-select { max-width: 100%; }
+  .zao-header { display: none; }
+  .zao-row { grid-template-columns: 28px 52px minmax(0, 1fr) 28px; }
+  .zao-row .zao-domains { grid-column: 2 / -1; grid-row: 2; }
+  .zao-row .zao-remove-row { grid-column: 4; grid-row: 1; }
+}
+
+/* The everyday surface is AI setup. Existing tools are revealed on demand. */
+.zao-our-dialog.sineItemPreferenceDialog {
+  box-sizing: border-box !important;
+  width: min(720px, calc(100vw - 32px)) !important;
+  min-width: 0 !important;
+  max-width: calc(100vw - 32px) !important;
+  max-height: calc(100vh - 32px) !important;
+  overflow-x: hidden !important;
+}
+.zao-our-dialog .sineItemPreferenceDialogContent {
+  display: block !important;
+  box-sizing: border-box !important;
+  width: 100%;
+  padding: 16px !important;
+}
+.zao-simple-settings {
+  display: block !important;
+  padding: 0 !important;
+  max-width: 640px;
+  margin: 0 auto;
+}
+.zao-simple-settings h2 { margin: 0 0 8px; font-size: 20px; }
+.zao-simple-intro { margin: 0 0 24px; line-height: 1.5; }
+.zao-simple-connection, .zao-simple-fields { display: grid; gap: 16px; min-width: 0; }
+.zao-simple-field { display: grid; gap: 6px; min-width: 0; }
+.zao-simple-field > span { font-weight: 600; }
+.zao-simple-field input, .zao-simple-field select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 36px;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 6px;
+  background: Field;
+  color: FieldText;
+  font: inherit;
+}
+.zao-simple-field input:focus-visible, .zao-simple-field select:focus-visible,
+.zao-simple-check input:focus-visible, .zao-advanced-settings > summary:focus-visible {
+  outline: 2px solid AccentColor;
+  outline-offset: 2px;
+}
+.zao-simple-check { display: flex; align-items: flex-start; gap: 10px; line-height: 1.45; }
+.zao-simple-check input { flex: 0 0 auto; margin: 3px 0 0; }
+.zao-simple-help { margin: 0; line-height: 1.45; }
+.zao-simple-suggestions { display: grid; gap: 12px; min-width: 0; margin: 0; padding: 12px; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); }
+.zao-simple-suggestions legend { padding: 0 4px; font-weight: 600; }
+.zao-advanced-settings {
+  display: block !important;
+  padding: 0 !important;
+  margin: 28px 0 0;
+  border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+.zao-advanced-settings > summary { padding: 14px 0; cursor: pointer; font-weight: 600; }
+.zao-advanced-settings:not([open]) > .zao-advanced-content { display: none !important; }
+.zao-advanced-content { min-width: 0; }
+.zao-advanced-content > .zao-control-row { grid-template-columns: minmax(0, 1fr) !important; gap: 8px; }
+.zao-advanced-content .zao-settings-select { max-width: 100%; }

@@ -24,6 +24,7 @@
 // as an existing rule (rare but possible in Preview + Save Rule mode).
 
 import { LOG, h } from "./config.mjs";
+import { stopActiveSort } from "./sort-session.mjs";
 
 const newKey = (name) => `new:${name.toLowerCase()}`;
 const existingKey = (name) => `existing:${name.toLowerCase()}`;
@@ -120,7 +121,7 @@ const groupExistingByTarget = (assignedToExisting) => {
  *
  * @returns {Promise<Plan | null>} The filtered plan to apply, or null on cancel.
  */
-export const showPreviewModal = ({ plan, existingNames, onReassignToNew, onAssignToPlanned, onAssignToExisting }) =>
+export const showPreviewModal = ({ plan, existingNames, onReassignToNew, onAssignToPlanned, onAssignToExisting, signal }) =>
   new Promise((resolve) => {
     let currentPlan = clonePlan(plan);
     let reassigning = false;
@@ -187,12 +188,15 @@ export const showPreviewModal = ({ plan, existingNames, onReassignToNew, onAssig
 
     // ─── Rendering ─────────────────────────────────────────────────────────
     function render() {
+      if (done) return;
+      const focusKey = document.activeElement?.dataset?.zaoFocusKey;
+      const scrollTop = body.scrollTop;
       while (body.firstChild) body.firstChild.remove();
 
       const existingTargets = groupExistingByTarget(currentPlan.assignedToExisting);
       const totalKept = countKept(existingTargets);
       const totalGroups = currentPlan.newGroups.length + existingTargets.length + currentPlan.rulePatches.length;
-      const skippedCount = currentPlan.skipped.length + currentPlan.unresolved.length;
+      const skippedCount = pendingTabs(existingTargets).length;
       const pendingForReassign = pendingTabs(existingTargets).length;
       const proposalLabel = currentPlan.rulePatches.length > 0 ? "proposal(s)" : "group(s)";
 
@@ -270,6 +274,9 @@ export const showPreviewModal = ({ plan, existingNames, onReassignToNew, onAssig
       reassignToNewBtn.title = pendingForReassign === 0
         ? "Nothing to re-assign — every tab is in a kept group"
         : `Cluster ${pendingForReassign} unkept tab(s) into fresh new categories`;
+      if (focusKey) [...body.querySelectorAll("[data-zao-focus-key]")].find((node) => node.dataset.zaoFocusKey === focusKey)?.focus({ preventScroll: true });
+      body.scrollTop = scrollTop;
+      if (currentPlan.failed) { const warning = h("p", { class: "zao-category-error", text: "Some tabs could not be classified. They will keep their current groups; you can retry them." }); warning.setAttribute("role", "alert"); body.appendChild(warning); }
     }
 
     function renderGroupBlock(g, kind) {
@@ -282,6 +289,7 @@ export const showPreviewModal = ({ plan, existingNames, onReassignToNew, onAssig
       block.setAttribute("role", "button");
       block.setAttribute("aria-pressed", isKept ? "true" : "false");
       block.tabIndex = 0;
+      block.dataset.zaoFocusKey = key;
       block.addEventListener("click", () => {
         if (reassigning) return;
         if (isKept) kept.delete(key);
@@ -322,6 +330,7 @@ export const showPreviewModal = ({ plan, existingNames, onReassignToNew, onAssig
       block.setAttribute("role", "button");
       block.setAttribute("aria-pressed", isKept ? "true" : "false");
       block.tabIndex = 0;
+      block.dataset.zaoFocusKey = key;
       block.addEventListener("click", () => {
         if (reassigning) return;
         if (isKept) kept.delete(key);
@@ -420,7 +429,7 @@ export const showPreviewModal = ({ plan, existingNames, onReassignToNew, onAssig
     async function runWithSpinner(fn) {
       reassigning = true;
       const reassignButtons = [reassignToPlannedBtn, reassignToExistingBtn, reassignToNewBtn];
-      const allBtns = [...reassignButtons, cancelBtn, applyBtn];
+      const allBtns = [...reassignButtons, applyBtn];
       const wasDisabled = allBtns.map((b) => b.disabled);
       for (const b of allBtns) b.disabled = true;
       const originalTexts = reassignButtons.map((b) => b.textContent);
@@ -435,7 +444,7 @@ export const showPreviewModal = ({ plan, existingNames, onReassignToNew, onAssig
       try {
         await fn();
       } catch (e) {
-        console.error(`${LOG} preview modal: action failed:`, e);
+        if (!done && !signal?.aborted) { currentPlan.failed = "Reassignment failed"; console.error(`${LOG} preview modal: action failed:`, e); }
       } finally {
         reassigning = false;
         for (const s of spinners) s.remove();
@@ -628,12 +637,17 @@ export const showPreviewModal = ({ plan, existingNames, onReassignToNew, onAssig
     function cleanup(result) {
       if (done) return;
       done = true;
+      signal?.removeEventListener("abort", onAbort);
+      if (result === null && reassigning) stopActiveSort();
       try { dialog.close(); } catch {}
       dialog.remove();
       console.log(`${LOG} preview modal closed (apply=${result !== null})`);
       resolve(result);
     }
 
+    const onAbort = () => cleanup(null);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) { cleanup(null); return; }
     render();
     document.body.appendChild(dialog);
     dialog.showModal();

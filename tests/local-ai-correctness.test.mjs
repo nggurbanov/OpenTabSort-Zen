@@ -4,14 +4,23 @@ import { CONFIG } from "../modules/config.mjs";
 import { runPass2, runPass2Fresh, applyPass2 } from "../modules/ai.mjs";
 import { matchesTitle, runPass1 } from "../modules/pass1.mjs";
 
-const makeGroup = (name, tabs = []) => ({
-  isConnected: true,
-  getAttribute: (key) => key === "label" ? name : null,
-  hasAttribute: () => false,
-  querySelector: () => null,
-  querySelectorAll: () => tabs,
-  style: { setProperty() {}, removeProperty() {} },
-});
+const makeGroup = (name, tabs = []) => {
+  const attrs = new Map([["label", name]]);
+  const group = {
+    isConnected: true, tabs: [...tabs], className: "",
+    getAttribute: (key) => attrs.get(key) ?? null,
+    setAttribute: (key, value) => attrs.set(key, value),
+    removeAttribute: (key) => attrs.delete(key),
+    hasAttribute: (key) => attrs.has(key),
+    querySelector: (selector) => selector.startsWith("tab") ? group.tabs[0] || null : null,
+    querySelectorAll: () => group.tabs,
+    style: { setProperty() {}, removeProperty() {} },
+    classList: { add() {}, remove() {} },
+    remove() { this.isConnected = false; },
+  };
+  for (const tab of tabs) tab.group = group;
+  return group;
+};
 
 const installEnvironment = (t, groups = []) => {
   const previous = new Map(["Services", "document", "window", "gBrowser", "ChromeUtils", "fetch"].map((key) => [key, globalThis[key]]));
@@ -37,10 +46,21 @@ const installEnvironment = (t, groups = []) => {
     querySelector: (selector) => groups.find((group) => selector.includes(`label="${group.getAttribute("label")}"`)) || null,
   };
   globalThis.window = { gZenWorkspaces: { activeWorkspaceElement: { tabsContainer: { firstChild: null } } } };
+  const detach = (tab) => {
+    if (tab.group) {
+      tab.group.tabs.splice(tab.group.tabs.indexOf(tab), 1);
+      if (!tab.group.tabs.length) tab.group.isConnected = false;
+    }
+    tab.group = null;
+  };
   globalThis.gBrowser = {
-    moveTabToExistingGroup: (tab, group) => events.push({ type: "move", tab, group }),
-    ungroupTab: (tab) => events.push({ type: "ungroup", tab }),
-    addTabGroup: (tabs, options) => { events.push({ type: "create", tabs, options }); return makeGroup(options.label, tabs); },
+    moveTabToExistingGroup: (tab, group) => { events.push({ type: "move", tab, group }); detach(tab); tab.group = group; group.tabs.push(tab); },
+    ungroupTab: (tab) => { events.push({ type: "ungroup", tab }); detach(tab); },
+    addTabGroup: (tabs, options) => {
+      events.push({ type: "create", tabs, options });
+      for (const tab of tabs) detach(tab);
+      const group = makeGroup(options.label, tabs); groups.push(group); return group;
+    },
   };
   globalThis.ChromeUtils = {
     embeddingRun: async (request) => {
@@ -58,16 +78,17 @@ const installEnvironment = (t, groups = []) => {
   return { prefs, writes, embeddingInputs, fetched, events };
 };
 
-const info = (id, title, path, group = null) => ({
-  id, title, hostname: "example.com", url: `https://example.com/${path}`,
-  _tab: {
-    isConnected: true,
-    closest: () => group,
+const info = (id, title, path, group = null) => {
+  const tab = {
+    isConnected: true, group,
+    closest: () => tab.group,
     getAttribute: (key) => key === "label" ? title : null,
     querySelector: () => null,
     linkedBrowser: { currentURI: { spec: `https://example.com/${path}` } },
-  },
-});
+  };
+  if (group) group.tabs.push(tab);
+  return { id, title, hostname: "example.com", url: `https://example.com/${path}`, _tab: tab };
+};
 
 test("Fresh separates different page intents on one host and preserves each page's snippet", async (t) => {
   const env = installEnvironment(t);
@@ -186,4 +207,25 @@ test("Fresh derives shared content words across different pages on one hostname"
   installEnvironment(t);
   const result = await runPass2Fresh([info(1, "Cooking recipe", "cooking/1"), info(2, "Cooking dinner", "cooking/2")], [], "workspace");
   assert.deepEqual(result.newGroups.map((group) => group.name), ["Cooking Reading"]);
+});
+
+
+test("primary Local Fresh reuses meaningful names across repeated sorts", async (t) => {
+  installEnvironment(t, [makeGroup("Reading"), makeGroup("Shopping")]);
+  const tabs = [info(1, "Reading guide", "read/1"), info(2, "Reading article", "read/2"), info(3, "Shopping item", "shop/1"), info(4, "Shopping catalog", "shop/2")];
+  for (let run = 0; run < 2; run++) {
+    const plan = await runPass2Fresh(tabs, [], "workspace", { workspaceAI: true });
+    assert.deepEqual(plan.newGroups.map((group) => group.name), ["Reading", "Shopping"]);
+  }
+});
+
+
+test("Local Fresh reports total embedding failure instead of a successful no-op", async (t) => {
+  installEnvironment(t);
+  globalThis.ChromeUtils.embeddingRun = async () => { throw new Error("Model load failed"); };
+  const tabs = [info(1, "Reading guide", "read/1"), info(2, "Reading article", "read/2")];
+  const plan = await runPass2Fresh(tabs, [], "workspace", { workspaceAI: true });
+  assert.match(plan.failed, /embedding model/);
+  assert.deepEqual(plan.unresolved, tabs);
+  assert.deepEqual(plan.newGroups, []);
 });

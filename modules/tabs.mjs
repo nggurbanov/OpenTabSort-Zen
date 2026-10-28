@@ -1,5 +1,8 @@
 // OpenTabSort Zen — tab enumeration + DOM helpers.
 
+import { mapPageContext, readPageContextHtml, PAGE_CONTEXT_BUDGET_MS } from "./page-context.mjs";
+import { getActiveSortSignal } from "./sort-session.mjs";
+
 export const getTabTitle = (tab) => {
   if (!tab?.isConnected) return "";
   const labelAttr = tab.getAttribute("label");
@@ -106,27 +109,69 @@ const extractSnippetFromHtml = (html) => {
 
 // Returns "" on any failure (404, timeout, network error, non-HTML response,
 // no usable meta tag). Caller treats empty as "no snippet, fall back to title".
-export const fetchPageSnippet = async (url) => {
+// Explicit sort cancellation propagates so the remaining queue stops immediately.
+export const fetchPageSnippet = async (url, { signal = getActiveSortSignal() } = {}) => {
+  signal?.throwIfAborted();
   if (!url) return "";
   if (!url.startsWith("http://") && !url.startsWith("https://")) return "";
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SNIPPET_FETCH_TIMEOUT_MS);
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(abort, SNIPPET_FETCH_TIMEOUT_MS);
+  let response;
   try {
-    const res = await fetch(url, {
+    response = await fetch(url, {
       signal: controller.signal,
       credentials: "include", // send the user's cookies so authed pages return real content
       headers: { Accept: "text/html,application/xhtml+xml" },
     });
-    if (!res.ok) return "";
-    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (!response.ok) return "";
+    const ct = (response.headers.get("content-type") || "").toLowerCase();
     if (!ct.includes("html")) return "";
-    const html = await res.text();
+    const html = await readPageContextHtml(response);
+    signal?.throwIfAborted();
     return extractSnippetFromHtml(html);
   } catch {
+    signal?.throwIfAborted();
     return "";
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+    // Error/non-HTML responses were never read; cancel them instead of leaving
+    // their transfers alive. The streaming reader releases its own lock.
+    if (response?.body && !response.body.locked) {
+      try { await response.body.cancel(); } catch {}
+    }
+  }
+};
+
+// Preserve positional tab alignment while sharing a page request across titles
+// or duplicate copies. A worker starts its next URL only while the run is live.
+export const fetchPageSnippets = async (tabs, { signal = getActiveSortSignal(), budgetMs = PAGE_CONTEXT_BUDGET_MS } = {}) => {
+  signal?.throwIfAborted();
+  const urls = [...new Set(tabs.map((tab) => tab?.url || ""))];
+  const byUrl = new Map();
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(() => controller.abort(), Math.max(0, budgetMs));
+  try {
+    await mapPageContext(urls, async (url) => {
+      if (controller.signal.aborted) return;
+      try {
+        byUrl.set(url, await fetchPageSnippet(url, { signal: controller.signal }));
+      } catch {
+        // Context is optional: its phase deadline keeps successful snippets and
+        // falls back to titles for the rest. User cancellation still rejects.
+        signal?.throwIfAborted();
+      }
+    }, { signal });
+    signal?.throwIfAborted();
+    return tabs.map((tab) => byUrl.get(tab?.url || "") || "");
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
   }
 };
 
@@ -149,6 +194,10 @@ export const fetchPageSnippet = async (url) => {
  * current placement disagrees with the rules. Filters out: pinned, empty (placeholder),
  * glance, essential, and tabs from other workspaces.
  */
+// Browser settings and utility pages are never part of the workspace sent to AI.
+export const isOrganizableUrl = (url) => !/^(?:chrome|resource|moz-extension):/i.test(url) &&
+  (!/^about:/i.test(url) || /^about:reader(?:[?#]|$)/i.test(url));
+
 export const getEligibleTabs = () => {
   const workspaceId = window.gZenWorkspaces?.activeWorkspace;
   if (!workspaceId || typeof gBrowser === "undefined" || !gBrowser.tabs) {
@@ -163,7 +212,7 @@ export const getEligibleTabs = () => {
       if (tab.hasAttribute("zen-empty-tab")) return false;
       if (tab.hasAttribute("zen-glance-tab")) return false;
       if (tab.hasAttribute("zen-essential")) return false;
-      return true;
+      return isOrganizableUrl(getTabUrl(tab));
     })
     .map((tab, idx) => {
       const url = getTabUrl(tab);

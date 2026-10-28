@@ -11,7 +11,8 @@ import { buildClassifyPrompt, buildClusterPrompt, buildUnifiedPrompt, buildFresh
 import { consolidateNewGroups } from "./new-group-consolidation.mjs";
 import { PROVIDER_TAB_BATCH_SIZE } from "./provider-batching.mjs";
 import { collectProviderTabMap, clusterAssignments, normalizeProviderLabel } from "./remote-assignment-retry.mjs";
-import { fetchPageSnippet } from "./tabs.mjs";
+import { fetchPageSnippets } from "./tabs.mjs";
+import { getActiveSortSignal, throwIfSortCancelled } from "./sort-session.mjs";
 import { showToast } from "./ui-toast.mjs";
 import { safeProviderErrorMessage } from "./safe-log.mjs";
 
@@ -42,6 +43,7 @@ export const classifyExistingGroupsRemoteBatch = async (pendingTabs, rules, sett
       return name && (namesByLower.has(name.toLowerCase()) || /^(none|skipped)$/i.test(name)) ? name : null;
     },
   });
+  throwIfSortCancelled();
   const out = new Map(pendingTabs.map((_, index) => [index, namesByLower.get(parsedByIndex.get(index)?.toLowerCase()) || null]));
   out.unresolved = new Set(missing);
   if (failures.length) out.failed = failures.join("; ");
@@ -78,6 +80,7 @@ export const runPass2Remote = async (unmatched, rules, settings = readProviderSe
       buildPrompt: (tabs, chunkSnippets) => buildUnifiedPrompt(rules, tabs, chunkSnippets),
       fetchJson: (prompt) => providerJson(readiness.value, prompt, PROVIDER_JSON_MAX_TOKENS),
     });
+    throwIfSortCancelled();
     const assignedToExisting = [];
     const newGroupsByKey = new Map();
     const skipped = [];
@@ -111,6 +114,7 @@ export const runPass2Remote = async (unmatched, rules, settings = readProviderSe
     }
     return { assignedToExisting, newGroups, skipped, unresolved, ...(failures.length ? { failed: failures.join("; ") } : {}) };
   } catch (e) {
+    if (e.name === "AbortError") throw e;
     const message = safeProviderErrorMessage(e, [settings.apiKey]);
     console.error(`${LOG} remote provider classification failed: ${message}`);
     showToast(`Remote provider classification failed: ${message}`);
@@ -139,6 +143,7 @@ export const runPass2RemoteFresh = async (allTabs, settings = readProviderSettin
       buildPrompt: (tabs, chunkSnippets) => buildFreshPrompt(tabs, chunkSnippets),
       fetchJson: (prompt) => providerJson(readiness.value, prompt, PROVIDER_FRESH_JSON_MAX_TOKENS),
     });
+    throwIfSortCancelled();
     const newGroupsByKey = new Map();
     const skipped = [];
     const unresolved = [];
@@ -174,6 +179,7 @@ export const runPass2RemoteFresh = async (allTabs, settings = readProviderSettin
       ...(failures.length > 0 ? { failed: failures.join("; ") } : {}),
     };
   } catch (e) {
+    if (e.name === "AbortError") throw e;
     const message = safeProviderErrorMessage(e, [settings.apiKey]);
     console.error(`${LOG} remote provider fresh classification failed: ${message}`);
     showToast(`Remote provider fresh classification failed: ${message}`);
@@ -189,6 +195,7 @@ const clusterUnmatchedNewGroups = async (leftover, settings) => {
     buildPrompt: (tabs) => buildClusterPrompt(tabs),
     fetchJson: async (prompt, count) => clusterAssignments(await providerJson(settings, prompt), count),
   });
+  throwIfSortCancelled();
   const groupsByLower = new Map();
   const skipped = [];
   for (const [index, name] of parsedByIndex) {
@@ -221,7 +228,8 @@ const extractJsonObjectText = (text) => {
   return raw;
 };
 
-const providerText = async (settings, prompt, maxTokens, signal) => {
+const providerText = async (settings, prompt, maxTokens, signal = getActiveSortSignal()) => {
+  signal?.throwIfAborted();
   const request = buildProviderRequest(settings, prompt, maxTokens);
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -271,11 +279,7 @@ const dedupeTabs = (tabs) => {
 
 const fetchSnippets = async (tabs, label) => {
   const t0 = performance.now();
-  const snippets = await Promise.all(tabs.map((tab) => {
-    const url = tab.url || "";
-    if (!url.startsWith("http://") && !url.startsWith("https://")) return "";
-    return fetchPageSnippet(url);
-  }));
+  const snippets = await fetchPageSnippets(tabs);
   const hit = snippets.filter(Boolean).length;
   console.log(`${LOG} ${label}: fetched snippets for ${hit}/${tabs.length} tab(s) in ${Math.round(performance.now() - t0)}ms`);
   return snippets;

@@ -69,7 +69,7 @@ export const driveZenScenario = async (marionette, scenario) => {
   await waitForZenReady(marionette);
   await prepareTabs(marionette, scenario);
   await waitForWorkspaceUrls(marionette, scenario.tabs.length);
-  await clickWand(marionette);
+  await clickWand(marionette, scenario.name === "hybrid");
   return await waitForSortedState(marionette, scenario.name, scenario.tabs.length);
 };
 
@@ -125,11 +125,11 @@ export const waitForWorkspaceUrls = async (marionette, expectedTabs) => waitUnti
   return { done: state.fixtureCount >= expectedTabs, state };
 }, "Zen did not attach fixture URLs to tabs");
 
-const clickWand = async (marionette) => {
+const clickWand = async (marionette, legacy = false) => {
   const result = await marionette.executeAsync(`
     const done = arguments[arguments.length - 1];
     const win = Services.wm.getMostRecentWindow("navigator:browser");
-    win.OpenTabSortZen.handleOrganizeClick()
+    win.OpenTabSortZen.${legacy ? "handleLegacyOrganizeClick" : "handleOrganizeClick"}()
       .then(() => done({ directHandler: true }))
       .catch((error) => done({ error: error?.stack || error?.message || String(error) }));
   `);

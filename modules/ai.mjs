@@ -14,9 +14,10 @@ import {
   getAINewGroupBehavior,
   getLocalAIBatchSize,
 } from "./rules.mjs";
-import { getTabTitle, fetchPageSnippet } from "./tabs.mjs";
+import { getTabTitle, fetchPageSnippet, fetchPageSnippets } from "./tabs.mjs";
 import { findExistingGroup, expandIfCollapsed, applyGroupColor, findSafeInsertAnchor } from "./groups.mjs";
 import { showToast } from "./ui-toast.mjs";
+import { throwIfSortCancelled, reportSortProgress } from "./sort-session.mjs";
 // Math/naming primitives live in dedupe.mjs — a standalone leaf both this file
 // and ollama.mjs depend on, avoiding a circular import. See docs/module-dedupe.md.
 import {
@@ -148,6 +149,8 @@ export const embedBatch = async (inputs, opts = {}) => {
   const out = [];
   let alreadyRecreated = false;
   for (let i = 0; i < inputs.length; i += batchSize) {
+    throwIfSortCancelled();
+    reportSortProgress(`Local AI · embedding ${Math.min(i + batchSize, inputs.length)} / ${inputs.length}`);
     const chunk = inputs.slice(i, i + batchSize);
     let results = await Promise.all(chunk.map(embed));
     // A genuinely dead engine yields SENTINEL for every input; empty-input rejections come
@@ -680,7 +683,7 @@ const nameClusterFromSignals = (tabs, snippetByPage) => {
  *
  * @param {Array} tabs — all eligible tab info objects (Pass 2 fresh-like input)
  */
-export const runPass2Fresh = async (tabs, rules = [], workspaceId) => {
+export const runPass2Fresh = async (tabs, rules = [], workspaceId, { workspaceAI = false } = {}) => {
   const empty = { assignedToExisting: [], newGroups: [], skipped: [] };
   if (!tabs || tabs.length === 0) return empty;
 
@@ -698,13 +701,7 @@ export const runPass2Fresh = async (tabs, rules = [], workspaceId) => {
   // Limit concurrent page fetches as well as embeddings. Different pages
   // on one host can carry different og:type/topic signals.
   const snippetT0 = performance.now();
-  const snippets = [];
-  for (let index = 0; index < reps.length; index += batchSize) {
-    const chunk = await Promise.all(reps.slice(index, index + batchSize).map((tab) =>
-      fetchPageSnippet(tab.url || "")
-    ));
-    snippets.push(...chunk);
-  }
+  const snippets = await fetchPageSnippets(reps);
   const hitCount = snippets.filter((s) => s).length;
   console.log(
     `${LOG} Local Fresh: fetched page snippets for ${hitCount}/${reps.length} tab(s) in ${Math.round(performance.now() - snippetT0)}ms`
@@ -739,13 +736,19 @@ export const runPass2Fresh = async (tabs, rules = [], workspaceId) => {
     return { ...empty, skipped: tabs, failed: "embedding engine load failed" };
   }
 
+  if (reps.length && !pageToEmb.size) {
+    return { ...empty, unresolved: tabs, failed: "The local embedding model could not process these tabs." };
+  }
+
   // Cluster distinct page signals; same-host tabs can now separate by intent.
   const pageKeys = [...pageToEmb.keys()];
   const parent = Array.from({ length: pageKeys.length }, (_, i) => i);
   const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
   const union = (i, j) => { parent[find(i)] = find(j); };
 
+  reportSortProgress("Local AI · comparing page topics…");
   for (let i = 0; i < pageKeys.length; i++) {
+    if (i % 8 === 0) { await new Promise((resolve) => setTimeout(resolve, 0)); throwIfSortCancelled(); }
     const a = pageToEmb.get(pageKeys[i]);
     for (let j = i + 1; j < pageKeys.length; j++) {
       const b = pageToEmb.get(pageKeys[j]);
@@ -791,6 +794,7 @@ export const runPass2Fresh = async (tabs, rules = [], workspaceId) => {
   };
   let mergedPairs = 0;
   for (let i = 0; i < mergeCids.length; i++) {
+    if (i % 8 === 0) { await new Promise((resolve) => setTimeout(resolve, 0)); throwIfSortCancelled(); }
     const a = centroids.get(mergeCids[i]);
     for (let j = i + 1; j < mergeCids.length; j++) {
       const b = centroids.get(mergeCids[j]);
@@ -844,7 +848,7 @@ export const runPass2Fresh = async (tabs, rules = [], workspaceId) => {
   const newGroups = resolveNameCollisions(rawGroups, {
     getCentroid: (g) => g._centroid || null,
     threshold: CONFIG.NAME_COLLISION_MERGE_THRESHOLD,
-    existingNames: [...rules.map((rule) => rule.name).filter(Boolean), ...existingGroupNames(workspaceId)],
+    existingNames: workspaceAI ? [] : [...rules.map((rule) => rule.name).filter(Boolean), ...existingGroupNames(workspaceId)],
   }).map(({ _centroid, ...g }) => g);
   if (newGroups.length !== rawGroups.length) {
     console.log(`${LOG} Local Fresh: name-collision dedupe collapsed ${rawGroups.length} → ${newGroups.length} cluster(s)`);
@@ -856,173 +860,5 @@ export const runPass2Fresh = async (tabs, rules = [], workspaceId) => {
   return { assignedToExisting: [], newGroups, skipped };
 };
 
-// ─── Apply the AI decisions ───────────────────────────────────────────────────
-
-const addDomainToRule = (ruleName, hostname, rules) => {
-  const rule = rules.find((r) => r.name === ruleName);
-  if (!rule) return false;
-  if (!hostname || rule.domains.includes(hostname)) return false;
-  rule.domains.push(hostname);
-  return true;
-};
-
-const cleanTitleTerm = (term) => String(term || "").trim();
-
-const titleTermsFromPatch = (patch) =>
-  (patch?.titleTerms || [])
-    .map((item) => cleanTitleTerm(item?.term))
-    .filter(Boolean);
-
-const addTitleTermsToRule = (ruleName, terms, rules) => {
-  const rule = rules.find((r) => r.name === ruleName);
-  if (!rule || !terms?.length) return 0;
-  if (!Array.isArray(rule.titleTerms)) rule.titleTerms = [];
-  const seen = new Set(rule.titleTerms.map(normalizeCase));
-  let added = 0;
-  for (const term of terms) {
-    const key = normalizeCase(term);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    rule.titleTerms.push(term);
-    added++;
-  }
-  return added;
-};
-
-// Pick a Zen palette color that isn't yet in `usedSet`. Falls back to a random
-// preset if all are taken. Mutates `usedSet` to reserve the chosen color so
-// subsequent calls within one apply pass don't double-up.
-const pickAvailableColor = (usedSet) => {
-  const available = PRESET_COLORS.filter((c) => !usedSet.has(c.name));
-  const pool = available.length > 0 ? available : PRESET_COLORS;
-  const pick = pool[Math.floor(Math.random() * pool.length)].name;
-  usedSet.add(pick);
-  return pick;
-};
-
-const openZenEditModalForGroup = (groupEl) => {
-  // Falls back silently if no API is available — the group is still created, the
-  // user just doesn't get the rename prompt.
-  try {
-    const tgm = window.gBrowser?.tabGroupMenu;
-    if (tgm) {
-      if (typeof tgm.openEditModal === "function") { tgm.openEditModal(groupEl); return true; }
-      if (typeof tgm.openCreate === "function")    { tgm.openCreate(groupEl); return true; }
-    }
-    // Generic last-resort: click the group's label to invoke the inline rename, if any.
-    const label = groupEl.querySelector(".tab-group-label");
-    if (label) { label.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); return true; }
-  } catch (e) {
-    console.warn(`${LOG} could not open Zen edit modal:`, e);
-  }
-  return false;
-};
-
-export const applyPass2 = (pass2Result, workspaceId, rules, options = {}) => {
-  const existingBehavior = options.existingBehavior || getAIExistingBehavior();
-  const newGroupBehavior = options.newGroupBehavior || getAINewGroupBehavior();
-  const persistRules = options.persistRules !== false;
-
-  let movedToExisting = 0;
-  let rulesGrown = 0;
-  let titleTermsGrown = 0;
-  let newGroupsCreated = 0;
-  let newRulesCreated = 0;
-  const rulePatches = Array.isArray(pass2Result.rulePatches) ? pass2Result.rulePatches : [];
-
-  // Seed the in-use color set from existing rules so new AI groups don't
-  // duplicate them. Updated as each new group is created within this batch.
-  const usedColors = new Set(
-    rules.map((r) => r.color).filter((c) => typeof c === "string" && c.length > 0)
-  );
-
-  // 1. Move tabs into existing rule-matched groups.
-  for (const a of pass2Result.assignedToExisting) {
-    const groupEl = findExistingGroup(a.groupName, workspaceId);
-    const tab = a.tabInfo._tab;
-    if (!groupEl?.isConnected || !tab?.isConnected) continue;
-    try {
-      expandIfCollapsed(groupEl);
-      if (tab.closest("tab-group") !== groupEl) {
-        gBrowser.moveTabToExistingGroup(tab, groupEl);
-        movedToExisting++;
-      }
-      if (persistRules && existingBehavior === "always-add") {
-        if (addDomainToRule(a.groupName, a.tabInfo.hostname, rules)) rulesGrown++;
-      }
-    } catch (e) {
-      console.error(`${LOG} AI: failed to move tab into "${a.groupName}":`, e);
-    }
-  }
-
-  // 2. Create new groups from each cluster.
-  const uniqueNewGroups = ensureUniqueGroupNames(pass2Result.newGroups,
-    [...rules.map((rule) => rule.name), ...existingGroupNames(workspaceId)]);
-  for (const cluster of uniqueNewGroups) {
-    const liveMembers = cluster.tabs.filter((tabInfo) => tabInfo._tab?.isConnected);
-    const tabs = liveMembers.map((tabInfo) => tabInfo._tab);
-    if (tabs.length === 0) continue;
-
-    const color = pickAvailableColor(usedColors);
-
-    try {
-      if (typeof gBrowser.ungroupTab === "function") {
-        for (const tab of tabs) {
-          if (tab.closest("tab-group")) gBrowser.ungroupTab(tab);
-        }
-      }
-      const newGroup = gBrowser.addTabGroup(tabs, {
-        label: cluster.name,
-        // Must anchor OUTSIDE any enclosing tab-group, or Zen nests the new group
-        // inside the old one — common in fresh-categories mode where tabs[0] is
-        // usually already grouped under a rule.
-        insertBefore: findSafeInsertAnchor(),
-        color,
-      });
-      if (!newGroup) continue;
-      newGroupsCreated++;
-
-      // Defensive: Zen's addTabGroup may ignore the color option on older APIs.
-      applyGroupColor(newGroup, color);
-
-      if (persistRules && newGroupBehavior === "auto-add") {
-        // Include the chosen color so syncAllGroupColors keeps it on future tidy-clicks.
-        const hostnames = [...new Set(liveMembers.map((t) => t.hostname).filter((h) => h))];
-        if (hostnames.length > 0 && !rules.some((r) => r.name === cluster.name)) {
-          rules.push({
-            name: cluster.name,
-            domains: hostnames,
-            color,
-          });
-          newRulesCreated++;
-        }
-      } else if (newGroupBehavior === "prompt") {
-        openZenEditModalForGroup(newGroup);
-        // Persisting the renamed group as a rule requires the tab's "Add to Rule…" submenu.
-      }
-      // "transient" — group exists in sidebar (with color) but rules aren't touched.
-    } catch (e) {
-      console.error(`${LOG} AI: failed to create new group "${cluster.name}":`, e);
-    }
-  }
-
-  // 3. Apply reviewed title-learning patches independently from tab/domain
-  // grouping. These can grow existing rules or create title-only rules.
-  for (const patch of persistRules ? rulePatches : []) {
-    const name = String(patch.groupName || "").trim();
-    const titleTerms = titleTermsFromPatch(patch);
-    if (!name || titleTerms.length === 0) continue;
-    let rule = rules.find((r) => normalizeCase(r.name) === normalizeCase(name));
-    if (!rule) {
-      const color = pickAvailableColor(usedColors);
-      rule = { name, domains: [], titleTerms: [], color };
-      rules.push(rule);
-      newRulesCreated++;
-    }
-    titleTermsGrown += addTitleTermsToRule(rule.name, titleTerms, rules);
-  }
-
-  if (persistRules && (rulesGrown > 0 || titleTermsGrown > 0 || newRulesCreated > 0)) persistAIRules(rules);
-
-  return { movedToExisting, rulesGrown, titleTermsGrown, newGroupsCreated, newRulesCreated };
-};
+// Compatibility for callers that already import the local AI module.
+export { applyPass2 } from "./apply-plan.mjs";

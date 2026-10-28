@@ -13,7 +13,7 @@
 export const LOG = "[OpenTabSort]";
 
 // +tag.N suffix (dev builds only) flags a stale module-cache load in the Browser Console.
-export const BUILD_VERSION = "1.4.2";
+export const BUILD_VERSION = "2.0.0";
 
 export const CONFIG = {
   MAX_INIT_CHECKS: 50,
@@ -46,6 +46,8 @@ export const CONFIG = {
 
   // AI_ENGINE_PREF: off/local/ollama/openai/gemini/custom/jev; remote engines require consent.
   AI_ENGINE_PREF: "extensions.zen-auto-organize.ai-engine",
+  SETUP_REQUEST_PREF: "extensions.zen-auto-organize.setup-request",
+  AI_REVIEW_PREF: "extensions.zen-auto-organize.ai-review-before-apply",
   AI_SORT_MODE_PREF: "extensions.zen-auto-organize.ai-sort-mode",
   AI_PROVIDER_CONSENT_PREF: "extensions.zen-auto-organize.ai-provider-consent",
   AI_OPENAI_ENDPOINT_PREF: "extensions.zen-auto-organize.ai-openai-endpoint",
@@ -120,15 +122,7 @@ export const ZEN_UNSET_LABEL = "​";
 export const isUnsetLabel = (label) => !label || label === ZEN_UNSET_LABEL;
 
 // Used if rules.json is missing/malformed and the Sine pref is unset.
-export const DEFAULT_RULES = [
-  { name: "Calendar", domains: ["calendar.google.com", "connect.garmin.com"] },
-  { name: "AI Tools", domains: ["chat.openai.com", "chatgpt.com", "gemini.google.com", "perplexity.ai", "claude.ai", "copilot.microsoft.com", "deepseek.com"] },
-  { name: "Dev",      domains: ["dashboard.render.com", "github.com", "stackoverflow.com", "gitlab.com", "developer.mozilla.org", "npmjs.com", "docs.github.com"] },
-  { name: "Shopping", domains: ["amazon.com", "staples.com", "ebay.com", "walmart.com", "target.com"] },
-  { name: "Social",   domains: ["reddit.com", "x.com", "bsky.app", "linkedin.com", "threads.net"] },
-  { name: "Music",    domains: ["open.spotify.com", "soundcloud.com", "music.youtube.com", "mixcloud.com"] },
-  { name: "Search",   domains: ["google.com", "duckduckgo.com"] },
-];
+export const DEFAULT_RULES = [];
 
 // Storing the color *name* (not hex) lets Zen handle light/dark variants via its native
 // --tab-group-color-{name}* CSS vars; hex is only a fallback swatch for about:preferences,

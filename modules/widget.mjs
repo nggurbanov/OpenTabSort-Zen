@@ -43,6 +43,26 @@ export const syncLiveGroupAppearances = (rules) => {
 export const buildRulesEditor = (rules) => {
   const container = h("div");
   container.className = "zao-rules-editor";
+  const toolbar = h("div", { class: "zao-rules-toolbar" });
+  const search = h("input", { class: "zao-rules-search" });
+  search.type = "search";
+  search.placeholder = "Search groups, domains, or title matches";
+  search.setAttribute("aria-label", "Search group rules");
+  const count = h("span", { class: "zao-rules-count" });
+  count.setAttribute("role", "status");
+  const clear = h("button", { class: "zao-rules-clear", text: "Clear search" });
+  clear.type = "button";
+  clear.hidden = true;
+  const list = h("div", { class: "zao-rule-list" });
+  const reorderHelp = h("p", { class: "zao-rules-help",
+    text: "First matching group wins. Drag its handle, or focus the handle and press Alt + Up or Down to change priority." });
+  toolbar.append(search, clear, count);
+  container.append(toolbar, reorderHelp, list);
+  const matchesSearch = (rule) => {
+    const query = search.value.trim().toLocaleLowerCase();
+    return !query || [rule.name, ...(rule.domains || []), ...(rule.titleTerms || [])]
+      .some((value) => String(value || "").toLocaleLowerCase().includes(query));
+  };
 
   const persist = () => {
     writeRulesPref(rules);
@@ -52,6 +72,12 @@ export const buildRulesEditor = (rules) => {
   // Hoisted: helpers defined above render() (e.g. renderPill's remove button)
   // still need to call it after mutating.
   let render;
+  search.addEventListener("input", () => render());
+  clear.addEventListener("click", () => {
+    search.value = "";
+    render();
+    search.focus();
+  });
 
   const ensureRuleLists = (rule) => {
     if (!Array.isArray(rule.domains)) rule.domains = [];
@@ -131,6 +157,7 @@ export const buildRulesEditor = (rules) => {
       input.type = "text";
       input.className = "zao-pill-input";
       input.placeholder = isTitle ? "title contains..." : "host.com or *.host.com";
+      input.setAttribute("aria-label", isTitle ? `Title match for ${rule.name || "this group"}` : `Domain match for ${rule.name || "this group"}`);
 
       let done = false;
       const commit = () => {
@@ -215,7 +242,7 @@ export const buildRulesEditor = (rules) => {
       .forEach((el) => el.classList.remove("zao-row-drop-before", "zao-row-drop-after"));
   };
 
-  const reorderRules = (fromIdx, toIdx) => {
+  const reorderRules = (fromIdx, toIdx, restoreFocus = false) => {
     if (fromIdx === toIdx || fromIdx === toIdx - 1) return; // no-op moves
     const [moved] = rules.splice(fromIdx, 1);
     // Splicing out an earlier item shifts every later index down by one.
@@ -223,6 +250,7 @@ export const buildRulesEditor = (rules) => {
     rules.splice(adjustedTo, 0, moved);
     persist();
     render();
+    if (restoreFocus) list.querySelector(`.zao-row[data-zao-idx="${adjustedTo}"] .zao-row-grip`)?.focus();
   };
 
   // Pill reorder within a rule's Matches cell, same container-listener
@@ -273,9 +301,24 @@ export const buildRulesEditor = (rules) => {
     row.dataset.zaoIdx = String(idx);
 
     // Only the grip is draggable, so drags can't start from the name/domain inputs.
-    const grip = h("div", { class: "zao-row-grip", text: "⋮⋮" });
-    grip.title = "Drag to reorder";
-    grip.setAttribute("draggable", "true");
+    const grip = h("button", { class: "zao-row-grip", text: "⋮⋮" });
+    grip.type = "button";
+    const filtering = Boolean(search.value.trim());
+    grip.title = filtering ? "Clear search to change group priority" : "Drag to reorder, or use Alt + Up / Down";
+    grip.setAttribute("aria-label", `Reorder ${rule.name || `group ${idx + 1}`}`);
+    grip.setAttribute("aria-keyshortcuts", "Alt+ArrowUp Alt+ArrowDown");
+    grip.disabled = filtering;
+    grip.setAttribute("draggable", String(!filtering));
+    grip.addEventListener("keydown", (event) => {
+      if (!event.altKey || filtering) return;
+      if (event.key === "ArrowUp" && idx > 0) {
+        event.preventDefault();
+        reorderRules(idx, idx - 1, true);
+      } else if (event.key === "ArrowDown" && idx < rules.length - 1) {
+        event.preventDefault();
+        reorderRules(idx, idx + 2, true);
+      }
+    });
     grip.addEventListener("dragstart", (e) => {
       e.dataTransfer.effectAllowed = "move";
       e.dataTransfer.setData("text/zao-rule-idx", String(idx));
@@ -299,6 +342,7 @@ export const buildRulesEditor = (rules) => {
     nameInput.type = "text";
     nameInput.className = "zao-group-name";
     nameInput.placeholder = "Group name";
+    nameInput.setAttribute("aria-label", `Group ${idx + 1} name`);
     nameInput.value = rule.name || "";
     nameInput.addEventListener("input", () => {
       rule.name = nameInput.value;
@@ -330,7 +374,8 @@ export const buildRulesEditor = (rules) => {
     removeBtn.type = "button";
     removeBtn.className = "zao-remove-row";
     removeBtn.textContent = "×";
-    removeBtn.title = "Remove this group";
+    removeBtn.title = `Remove ${rule.name || "this group"}`;
+    removeBtn.setAttribute("aria-label", removeBtn.title);
     removeBtn.addEventListener("click", () => {
       rules.splice(idx, 1);
       persist();
@@ -475,8 +520,10 @@ export const buildRulesEditor = (rules) => {
   }
 
   render = () => {
-    container.replaceChildren();
-
+    list.replaceChildren();
+    const visibleRules = rules.map((rule, index) => ({ rule, index })).filter(({ rule }) => matchesSearch(rule));
+    count.textContent = search.value.trim() ? `${visibleRules.length} of ${rules.length} groups` : `${rules.length} ${rules.length === 1 ? "group" : "groups"}`;
+    clear.hidden = !search.value;
     const header = h("div");
     header.className = "zao-header";
     header.appendChild(h("div")); // grip column (no label)
@@ -488,15 +535,15 @@ export const buildRulesEditor = (rules) => {
     c2.textContent = "Matches";
     header.appendChild(c2);
     header.appendChild(h("div")); // remove column
-    container.appendChild(header);
+    list.appendChild(header);
 
-    if (rules.length === 0) {
+    if (visibleRules.length === 0) {
       const empty = h("div");
       empty.className = "zao-empty";
-      empty.textContent = "No groups yet — click \"+ Add group\" to start.";
-      container.appendChild(empty);
+      empty.textContent = rules.length ? "No groups match your search. Clear the search to see all groups." : "No groups yet — click \"+ Add group\" to start.";
+      list.appendChild(empty);
     } else {
-      rules.forEach((rule, idx) => container.appendChild(renderRow(rule, idx)));
+      visibleRules.forEach(({ rule, index }) => list.appendChild(renderRow(rule, index)));
     }
 
     const addRow = h("div");
@@ -507,11 +554,13 @@ export const buildRulesEditor = (rules) => {
     addRowBtn.textContent = "+ Add group";
     addRowBtn.addEventListener("click", () => {
       rules.push({ name: "", domains: [], titleTerms: [] });
+      search.value = "";
       persist();
       render();
+      list.querySelector(`.zao-row[data-zao-idx="${rules.length - 1}"] .zao-group-name`)?.focus();
     });
     addRow.appendChild(addRowBtn);
-    container.appendChild(addRow);
+    list.appendChild(addRow);
   };
 
   // keepIncomplete: true so a blank row the user just added survives the

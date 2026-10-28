@@ -1,116 +1,94 @@
 # Architecture
 
-## Two execution contexts
+OpenTabSort runs as a Sine userChrome mod inside Zen. The main action organizes the active workspace with AI; the retained saved-rule pipeline is a separate advanced action.
 
-The same `auto-organize.uc.mjs` is loaded into two different documents by Sine:
+## Context loading
 
-```
-                 chrome://browser/content/browser.xhtml
-                            (main window)
-                                 │
-                                 ▼
-              ┌────────────────────────────────────┐
-              │ entry: auto-organize.uc.mjs        │
-              │   isBrowserContext = true          │
-              ▼                                    │
-   tryInitializeBrowser()                          │
-      ├── setupCommand()              ──▶ browser-ui.mjs
-      ├── addButtonToAllSeparators()  ──▶ browser-ui.mjs
-      ├── setupWorkspaceHooks()       ──▶ browser-ui.mjs
-      ├── setupTabContextMenu()       ──▶ browser-hooks.mjs  ("Add to Rule…" submenu)
-      ├── setupTabGroupCreateHook()   ──▶ browser-hooks.mjs
-      ├── setupMinimalStylePrefObserver() ──▶ browser-hooks.mjs
-      ├── syncAllGroupColors()        ──▶ groups.mjs
-      └── (if Ollama selected + warmup enabled)
-          warmupOllama()              ──▶ ollama-transport.mjs
+`auto-organize.uc.mjs` detects the current document before importing its runtime:
 
+- Browser chrome loads `browser-runtime.mjs` for the wand, workspace hooks, styling, and tab menus.
+- Preferences loads `prefs-ui.mjs` and the small `simple-settings.mjs` connection form.
+- Other documents do not load either runtime.
 
-                  about:preferences#sine-mods
-                       (settings page)
-                             │
-                             ▼
-              ┌────────────────────────────────────┐
-              │ entry: auto-organize.uc.mjs        │
-              │   isPrefsContext = true            │
-              ▼                                    │
-   setupSettingsObserver()            ──▶ prefs-ui.mjs
-      ├── fetchZenColorsFromBrowser() ──▶ color-picker.mjs
-      ├── MutationObserver(document.body)
-      └── onOurDialogFound(dialog)
-            ├── injectStylesheet()         ──▶ prefs-ui.mjs (internal)
-            └── performInject()            ──▶ prefs-ui.mjs (internal)
-                  ├── buildRulesEditor()        ──▶ widget.mjs
-                  │     ├── openColorPopover()       ──▶ color-picker.mjs
-                  │     └── openEmojiPopover()       ──▶ emoji-picker.mjs
-                  ├── buildBackupRestoreSection() ──▶ widget.mjs
-                  ├── tagSeparatorContainers()
-                  ├── injectSectionDescriptions()
-                  ├── setupEnginePrefObserver()
-                  └── updateConditionalFields()
-```
+AI engines, previews, the legacy orchestrator, and the advanced rule/icon editors are imported when needed. Advanced editors initialize on expansion. Lifecycle teardown removes listeners, observers, timers, injected controls, and retained dialog state.
 
-## Module dependency graph
+## Everyday action
 
-```
-config.mjs            (no deps; pure constants + helpers)
-   ▲
-   │
-rules.mjs   tabs.mjs   ui-toast.mjs
-   ▲           ▲              ▲
-   │           │              │
-   └─── groups.mjs             │
-            ▲                  │
-            │                  │
-        pass1.mjs              │
-            ▲                  │
-            │                  │
-            │  ┌── ai.mjs ─────┤    (Pass 2: local embedding engine)
-            │  │               │
-            │  │  ollama-transport.mjs ── ollama-prompts.mjs
-            │  │       ▲                       ▲
-            │  │       └────── ollama.mjs ─────┘
-            │  │                  ▲
-            │  │                  │
-            │  │           preview-modal.mjs   (preview UI)
-            │  │                  ▲
-            │  └──────────────────┤
-            │                     │
-            └─── click-handler.mjs
-                       ▲
-                       │
-   ┌───────────────────┴─────────────────┐
-   │                                     │
-browser-ui.mjs    browser-hooks.mjs   (browser context)
-   │                                     │
-   └─────────────┬───────────────────────┘
-                 │
-        auto-organize.uc.mjs
-                 │
-   ┌─────────────┴──────────┐
-   │                        │
-prefs-ui.mjs ─── widget.mjs ─── color-picker.mjs / emoji-picker.mjs   (prefs context)
-```
+`click-handler.mjs` owns the primary wand flow:
 
-**Not pictured above**: `modules/dedupe.mjs` (see [module-dedupe.md](module-dedupe.md)) is a pure, zero-dependency leaf module at the same "foundational" level as `config.mjs`. Both `ai.mjs` and `ollama.mjs` import from it; `ollama.mjs` also imports `embedBatch` directly from `ai.mjs` — a cross-import between the two engine modules, but not a cycle, since `ai.mjs` never imports from `ollama.mjs`.
+1. Check the chosen engine, connection readiness, and required consent. An unconfigured click opens setup without an AI request.
+2. Capture active-workspace tab references, relevant settings, native layout, and eligible-tab membership. Filter excluded domains without moving them.
+3. Start a cancellable `sort-session.mjs` operation with visible progress.
+4. Produce a transient plan using the selected engine.
+5. Optionally review the plan when `ai-review-before-apply` is enabled; it defaults to false.
+6. Recheck the captured state and validate that assignments reference eligible original tabs only once.
+7. Apply native placements, record session Undo, update Zen bookkeeping, and report the outcome.
 
-## The tidy-button click flow
+Saved matching rules, saved category lists, and advanced persistence settings do not constrain the main action. Existing group labels remain context for AI and may be reused when a proposed name matches. No rules are saved by this path.
 
-The handler captures rules, eligible live tab references, membership, and the active workspace before planning. Deterministic rule assignments and AI classification run without tab moves. Local existing-group embeddings and Ollama title audits use projected rule membership, including groups that will be created on Apply.
+### Chat and Ollama planning
 
-Remote classification is consent-gated. Rule-saving proposals open a preview. Cancellation exits before any workspace mutations. After asynchronous work, the captured workspace/tab/rule snapshot must remain current and every AI assignment must identify an eligible original tab only once.
+`ai-workspace-plan.mjs` produces one shared category vocabulary from the entire eligible workspace inventory. `jev-categories.mjs` bounds large inventories through partial suggestions and a reduction step. Classification then uses the same category IDs in batches of up to 75 tabs; existing retry helpers shrink or repair malformed/incomplete responses within bounded attempts.
 
-Accepted plans consolidate duplicates, park explicit skip-domain matches, apply deterministic and AI moves, and clean known empty groups in the original workspace. Failed/skipped classifications retain membership; strict-rule cleanup protects unresolved tabs. Full AI/Fresh/Preview Only disable persistence. Finally styling and Zen’s tab-container bookkeeping are resynchronized. See [the orchestrator](module-click-handler.md) for the current sequence.
+Inputs are compact titles, hostname/path context, and current group labels. URL credentials, query strings, fragments, control characters, and directional formatting characters are removed before prompt construction. Page metadata is treated as untrusted data. This path fetches no tab pages and loads no local embedding model.
 
-## State persistence
+Planning returns existing-group assignments, new groups, and unresolved tabs. Missing or invalid assignments never fabricate tab references. Unresolved tabs retain their original membership.
 
-All prefs use the `extensions.zen-auto-organize.*` prefix (legacy; preserved across the rename to `opentabsort-zen` so existing users keep their data).
+### Built-in local planning
 
-- **Rules** live in `extensions.zen-auto-organize.rules-json` (a JSON-encoded array). Read/written by `rules.mjs`. Observed by the widget so external changes (right-click "Add to Rule" submenu, Backup & Restore import, AI Pass 2) refresh the table live.
-- **Skip domains** live in `extensions.zen-auto-organize.skip-domains-json` (a JSON-encoded array of hostname patterns). Read during planning to park matching tabs at the top of the workspace.
-- **Strict rule enforcement** lives in `extensions.zen-auto-organize.strict-rules` (boolean, default false). When true, approved apply cleanup ejects any tab that does not match its current group under the active URL/title match mode.
-- **Rule matching priority** lives in `extensions.zen-auto-organize.match-mode` (`"url-only" | "title-only" | "url-then-title" | "title-then-url"`, default `"url-then-title"`).
-- **Gradient style** lives in `extensions.zen-auto-organize.gradient-style` (`"left-right"` by default) and controls how two-color rule gradients are drawn.
-- **Minimal style** lives in `extensions.zen-auto-organize.minimal-style`. Observed by `setupMinimalStylePrefObserver` (browser-hooks.mjs) so the style flips live across all workspaces.
-- **AI engine + behaviors** live in `extensions.zen-auto-organize.ai-engine` (`"off" | "local" | "ollama" | "openai" | "gemini" | "custom"`), `.ai-existing-behavior`, `.ai-new-group-behavior`, `.ai-ollama-host`, `.ai-ollama-model`, `.ai-ollama-warmup`.
-- **Rule appearance** is stored inline on each rule (`{ name, domains, titleTerms, color, color2, icon }`). `color`/`color2` are Zen palette names or hex strings; `icon` is plain text.
-- **Custom icons** live in `extensions.zen-auto-organize.custom-icons-json` as local image data URLs. Rules reference them by `custom:<id>`.
+The built-in option lazily loads `ai.mjs` and calls its fresh clustering pipeline with an empty rule list. It uses the browser's embedding model and its own clustering/naming logic rather than chat-generated categories. Its optional page context uses the bounded shared fetch path.
+
+### Decision planning
+
+`jev-sort.mjs` uses the configured suggestion AI to generate fresh categories for each primary run. `sourceOverride: "suggest"` bypasses saved/manual category selection; `persistCategories: false` leaves the saved category list intact.
+
+The decision provider classifies bounded batches against that category vocabulary and applies completed batches live. Stop or failure retains completed batches; unprocessed and uncertain tabs keep their current membership. The shared review preference controls category preview.
+
+## Interruption, application, and recovery
+
+`sort-session.mjs` owns abort propagation, progress, state checks, and cleanup. Workspace, tab, or relevant preference changes invalidate pending work. Requests and page-context work receive the operation's abort signal.
+
+Chat, Ollama, built-in local, and advanced rule sorting plan before applying. Stop during planning leaves layout unchanged. Decision sorting is incremental, so it keeps completed moves and offers Undo.
+
+`apply-placement.mjs` handles native move failures and attempts to restore the affected placement. `apply-plan.mjs` is shared by the primary and advanced orchestrators. Sorting moves original tab nodes; it does not close and recreate their browsing state.
+
+`tab-history.mjs` records one native layout receipt per completed operation. It restores membership, order, group appearance, and collapse state during the browser session. Undo checks the current layout before restoring and rejects a conflicting manual edit. It is not persisted as a cross-restart history.
+
+## Advanced compatibility path
+
+`legacy-sort.mjs` contains the retained deterministic rules + optional AI pipeline. It is loaded only by **Run advanced sorting**. Its rule-saving modes, Full AI, title learning, previews, exclusions, and strict cleanup remain available there.
+
+`widget.mjs`, color/emoji pickers, icon management, and backup/import tools load when Advanced is opened. The primary settings form only needs the engine, its connection, consent where required, and the review toggle.
+
+See [advanced tools](advanced.md) for the retained behavior. Older module-specific documents describe implementation details and may retain terminology from the advanced pipeline.
+
+## Bounded page context
+
+`page-context.mjs` supplies a shared six-worker queue and bounded native response reader. Local/advanced context gathering reads at most a 256 KiB HTML prefix per page and cancels the remaining body stream. The overall context phase has a six-second budget. Individual snippet requests also have a timeout.
+
+Page requests use browser cookies. Extracted context may be sent to the chosen advanced provider after its consent/readiness checks. Native response bodies use streaming limits; non-streaming test adapters can only truncate after their `text()` read.
+
+These are explicit work/transfer limits, not proof of a particular RSS reduction. The primary chat/Ollama/Decision flow avoids this work entirely.
+
+## Persistence
+
+All retained preferences use `extensions.zen-auto-organize.*` for migration compatibility.
+
+| Data | Storage/use |
+| --- | --- |
+| Rules | `rules-json`; JSON array, empty on fresh install. Advanced edits and approved advanced persistence only. |
+| Excluded domains | `skip-domains-json`; shared eligibility exclusion; advanced retains its top-parking behavior. |
+| Engine and connection | `ai-engine` and provider-specific endpoint/model/key preferences. |
+| Review | `ai-review-before-apply`; false by default. |
+| Provider consent | `ai-provider-consent`; explicit for OpenAI-compatible, Gemini, Custom, and Decision requests. |
+| Decision categories/options | Existing per-workspace category and provider preferences; primary suggestions do not overwrite them. |
+| Rule appearance/icons | Inline rule fields and `custom-icons-json`; preserved by saved-data backup. |
+| Session Undo | In-memory layout receipt; excluded from saved-data backup. |
+
+Keys remain local preferences and are excluded from exported backups and diagnostics. A configured remote Ollama address receives context there; the local default is `http://localhost:11434`. Ollama startup warming is disabled by default.
+
+The extracted host-theme tokens and component states are documented in [DESIGN.md](../DESIGN.md), with visual specimens in `.impeccable/design.json`.
+
+## Verification
+
+Use `npm run check` for manifest/preference/privacy validation and regression tests. [Real Zen checks](e2e-zen.md) exercise Sine-loaded native behavior in disposable profiles. [Overhaul measurements](overhaul-verification.md) distinguish fixture correctness, static import size, transfer budgets, and unmeasured live-model/RSS behavior.

@@ -1,24 +1,7 @@
-// OpenTabSort Zen — shared toast / system-notification helper.
-//
-// Tries Zen's UI manager first (best integration), falls back to the standard
-// nsIAlertsService (OS-level notification), finally console.warn if neither
-// is available. Used by both AI engine modules (ai.mjs, ollama.mjs) for
-// user-visible error surfacing.
-
+// Reliable browser-local feedback; no OS notification permissions are required.
 import { LOG } from "./config.mjs";
-
+import { showNotice } from "./operation-ui.mjs";
 export const showToast = (message) => {
-  try {
-    if (typeof gZenUIManager !== "undefined" && typeof gZenUIManager.showToast === "function") {
-      console.log(`${LOG} toast: ${message}`);
-      // gZenUIManager.showToast expects a localized string id, which we don't
-      // have. We log + fall through to the alerts service which takes raw text.
-      try {
-        const alertsService = Cc["@mozilla.org/alerts-service;1"]?.getService(Ci.nsIAlertsService);
-        alertsService?.showAlertNotification(null, "OpenTabSort Zen", message);
-      } catch {}
-      return;
-    }
-  } catch {}
-  console.warn(`${LOG} toast (no gZenUIManager): ${message}`);
+  try { showNotice(message); }
+  catch { console.warn(`${LOG} ${message}`); }
 };
