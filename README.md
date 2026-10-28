@@ -4,7 +4,7 @@ Hundreds of tabs, one button. OpenTabSort uses AI to organize the active [Zen Br
 
 Set up an AI connection once, then click the wand. AI works out the groups from your tabs. A quiet sidebar row shows progress and **Stop**; **Undo** appears when sorting finishes.
 
-Development version: **2.0.1, planned / unreleased**. Based on the MIT-licensed [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand).
+Development version: **2.0.2, planned / unreleased**. Based on the MIT-licensed [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand).
 
 ## Install
 

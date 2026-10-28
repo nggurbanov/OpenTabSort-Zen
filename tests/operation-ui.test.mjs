@@ -5,7 +5,7 @@ import { CONFIG } from "../modules/config.mjs";
 import { showNotice, showSortProgress } from "../modules/operation-ui.mjs";
 
 // Observable chrome tree + deterministic timers exercise the real controller.
-const environment = (t, { sidebar = true, anchor = sidebar } = {}) => {
+const environment = (t, { sidebar = true, anchor = sidebar, stableHost = sidebar } = {}) => {
   const previous = new Map(["window", "document"].map((key) => [key, globalThis[key]]));
   const observers = new Set(), timers = new Map(); let clock = 0, timerId = 0;
   const notify = (parent) => queueMicrotask(() => {
@@ -53,12 +53,18 @@ const environment = (t, { sidebar = true, anchor = sidebar } = {}) => {
     getBoundingClientRect() { return this.rect || { left: 260, bottom: 100, width: 24, height: 24 }; }
   }
   const root = new Element("window"), head = new Element("head"), wrapper = new Element("vbox"), separator = new Element("hbox"), next = new Element("tabs");
-  separator.className = "pinned-tabs-container-separator"; root.append(head, wrapper);
+  separator.className = "pinned-tabs-container-separator";
+  const sidebarHost = new Element("toolbox"), tabArea = new Element("hbox");
+  sidebarHost.id = "navigator-toolbox"; tabArea.id = "titlebar";
+  sidebarHost.rect = { left: 0, right: 186, top: 0, bottom: 768, width: 186, height: 768 };
+  root.appendChild(head);
+  if (stableHost) { root.appendChild(sidebarHost); sidebarHost.appendChild(tabArea); tabArea.appendChild(wrapper); }
+  else root.appendChild(wrapper);
   if (sidebar) wrapper.append(separator, next);
   let wand;
   if (anchor) { wand = new Element("toolbarbutton"); wand.id = CONFIG.BUTTON_ID; (sidebar ? separator : wrapper).append(wand); }
   const win = new Target();
-  Object.assign(win, { innerWidth: 1024, innerHeight: 768,
+  Object.assign(win, { innerWidth: 1024, innerHeight: 768, getComputedStyle: () => ({ flexDirection: "column" }),
     setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, due: clock + delay }); return id; },
     clearTimeout(id) { timers.delete(id); },
     MutationObserver: class {
@@ -72,7 +78,7 @@ const environment = (t, { sidebar = true, anchor = sidebar } = {}) => {
     getElementById: (id) => root.querySelector(`#${id}`) };
   Object.assign(globalThis, { window: win, document });
   t.after(() => { win.emit("unload"); for (const [key, value] of previous) value === undefined ? delete globalThis[key] : globalThis[key] = value; });
-  return { document, window: win, root, head, wrapper, separator, next, wand, Element, timers, observers,
+  return { document, window: win, root, head, wrapper, separator, next, wand, sidebarHost, tabArea, Element, timers, observers,
     row: () => document.querySelector(".zao-operation"),
     advance(ms) { clock += ms; for (const [id, timer] of [...timers]) if (timer.due <= clock) { timers.delete(id); timer.fn(); } },
   };
@@ -80,11 +86,12 @@ const environment = (t, { sidebar = true, anchor = sidebar } = {}) => {
 const actions = (root) => root.querySelectorAll("button").filter((node) => !node.hidden && !node.classList.contains("zao-operation-close"));
 const status = (root) => root.querySelector('[role="status"]');
 
-test("first feedback is styled synchronously, in the sidebar beside the wand, without a stylesheet request", (t) => {
+test("first feedback is styled synchronously in the stable sidebar column without a stylesheet request", (t) => {
   const env = environment(t); showSortProgress({ stage: "Preparing 300 tabs…" });
   const row = env.row();
   assert.equal(row.getAttribute("data-placement"), "sidebar");
-  assert.equal(env.separator.nextSibling, row); assert.equal(row.nextSibling, env.next);
+  assert.equal(row.parentElement, env.sidebarHost); assert.equal(row.nextSibling, env.tabArea);
+  assert.equal(env.wrapper.contains(row), false); assert.equal(env.separator.nextSibling, env.next);
   assert.equal(status(row).textContent, "Preparing 300 tabs…"); assert.equal(status(row).title, "Preparing 300 tabs…");
   assert.equal(status(row).getAttribute("aria-live"), "polite");
   assert.equal(actions(row)[0].getAttribute("data-action"), "stop");
@@ -211,4 +218,28 @@ test("an Undo refusal updates finished feedback without replacing its controls o
   assert.match(status(row).textContent, /layout changed/);
   undo.emit("click"); assert.equal(undoCalls, 1);
   env.advance(60000); assert.equal(row.isConnected, true);
+});
+
+
+test("feedback stays outside the tab scroll area when its wand is already scrolled offscreen", (t) => {
+  const env = environment(t);
+  env.wand.rect = { left: 100, right: 127, top: -9000, bottom: -8978, width: 27, height: 22 };
+  const ui = showSortProgress({ onUndo() {} });
+  const row = env.row();
+  assert.equal(row.parentElement, env.sidebarHost);
+  assert.equal(row.nextSibling, env.tabArea);
+  assert.equal(env.wrapper.contains(row), false);
+  env.wand.rect = { ...env.wand.rect, top: -12000, bottom: -11978 };
+  env.wrapper.emit("scroll"); ui.finish("Tidied 300 tabs", true);
+  assert.equal(row.parentElement, env.sidebarHost);
+  assert.deepEqual(actions(row).map((node) => node.textContent), ["Undo"]);
+});
+
+test("an unknown sidebar hierarchy falls back to a viewport-clamped overlay", (t) => {
+  const env = environment(t, { stableHost: false });
+  env.wand.rect = { left: 100, right: 127, top: -9000, bottom: -8978, width: 27, height: 22 };
+  showSortProgress(); const row = env.row();
+  assert.equal(row.getAttribute("data-placement"), "overlay");
+  assert.equal(row.style.top, "8px");
+  assert.equal(row.parentElement, env.root);
 });

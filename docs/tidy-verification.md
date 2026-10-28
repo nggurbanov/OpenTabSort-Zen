@@ -1,10 +1,10 @@
 # Tidy interaction verification — 2026-10-28
 
-Verified source update: **2.0.1**, in the `OpenTabSort-Zen` repository on `fix/tidy-interaction`. This is a dated follow-up; [the 2.0.0 verification record](overhaul-verification.md) remains historical.
+Verified source update: **2.0.2**, including the 2.0.1 Tidy changes, in the `OpenTabSort-Zen` repository on `fix/tidy-interaction`. This is a dated follow-up; [the 2.0.0 verification record](overhaul-verification.md) remains historical.
 
 ## Resulting behavior
 
-- A transparent native sidebar row, 32px high, provides short status and contextual Stop, Undo, or Setup. The full message remains in the tooltip and accessible label. Essential styles are injected before the row appears.
+- A transparent native sidebar toolbar row, 32px high and outside the scrolling tab list, provides short status and contextual Stop, Undo, or Setup. The full message remains in the tooltip and accessible label. Essential styles are injected before the row appears.
 - Successful feedback dismisses after five seconds, pausing while hovered or keyboard-focused. Dismissing the row retains a valid session Undo receipt. Errors requiring setup remain actionable.
 - Normal chat/Ollama inventories of up to 300 tabs use one grouping request with a 72 KiB UTF-8 prompt limit. Larger or exceptionally large-name inventories keep the global-taxonomy and bounded-classification path.
 - Optional placement motion lasts 260ms and covers at most 40 visible rows. It starts after native placement, adds no artificial wait, and respects reduced motion. Original tab objects and browsing state are retained.
@@ -42,11 +42,11 @@ The primary planner now permits 8192 output tokens and distinguishes truncated/e
 
 ## Automated coverage and limits
 
-Final `npm run check` passed **322/322 tests**, zero failures, with manifest, preferences, security, and retained-capability validation passing. Receipt: `/tmp/opentabsort-tidy-final-check.log`.
+Final `npm run check` passed **324/324 tests**, zero failures, with manifest, preferences, security, and retained-capability validation passing. Receipt: `/tmp/opentabsort-tidy-final-check.log`.
 
 Final Decision-engine native acceptance also passed: 300-tab batches, partial Stop/authentication recovery, manual-edit refusal, category review, primary category preservation, and Undo. Receipt: `/tmp/opentabsort-tidy-final-jev.log`. An Undo-refusal regression now updates the existing feedback without discarding its controls or focus.
 
-Final primary screenshot: `/tmp/opentabsort-tidy-primary.png`, with geometry in the adjacent `.json`: actual 32px native row, short `120 tabs tidy` label, and no row/status overflow after a real sort. Set `OPERATIONS_QA_SCREENSHOT` when running `e2e:operations` to reproduce this capture.
+Final primary screenshot: `/tmp/opentabsort-tidy-primary.png`, with geometry in the adjacent `.json`: actual 32px native row, short `120 tabs tidy` label, and no row/status overflow after a real sort. The final gate also checks viewport visibility after native automatic scrolling. Set `OPERATIONS_QA_SCREENSHOT` when running `e2e:operations` to reproduce this capture.
 
 `npm run check` covers the planner's one-request identity accounting, UTF-8 prompt bounds, existing-name reuse, consent/privacy, malformed output, conflicting and omitted indices, provider failure without full-request retries, cancellation, and the larger-inventory path. Follow-up regressions also cover operation-row cleanup and lifetime, retained Undo, bounded/reduced-motion placement effects, provider JSON response forms, and actionable failure labels.
 

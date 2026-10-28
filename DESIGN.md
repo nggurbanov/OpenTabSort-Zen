@@ -120,7 +120,7 @@ The Sine settings dialog is bounded by `min(720px, calc(100vw - 32px))`, with th
 
 The Advanced disclosure has a top divider and (28px) separation. Its retained preference rows stack into one column; the older rule grid reflows at (700px), placing domain chips below the rule name. The existing smaller action-row breakpoint is (520px).
 
-The operation row lives directly beneath the wand separator within the sidebar. It is (32px) high, with (2px 4px) padding and (4px) gaps; width follows the available sidebar. Status stays on one line with ellipsis, and contextual controls remain visible. The full text is available through the status tooltip and accessible label. If no sidebar anchor is available, a fallback overlay is bounded to `min(300px, calc(100vw - 16px))` near the wand.
+The operation row lives in the stable sidebar toolbar, directly before the tab-area titlebar and outside tab scrolling. It is (32px) high, with (2px 4px) padding and (4px) gaps; width follows the available sidebar. Status stays on one line with ellipsis, and contextual controls remain visible. The full text is available through the status tooltip and accessible label. If no sidebar anchor is available, a fallback overlay is bounded to `min(300px, calc(100vw - 16px))` near the wand.
 
 The final native UI receipt reports no horizontal overflow in the primary form at a (446 × 984px) viewport. This is a verified fixture size, not a supported-device matrix.
 

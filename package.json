@@ -1,6 +1,6 @@
 {
   "name": "opentabsort-zen",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "private": true,
   "type": "module",
   "description": "One-click AI grouping for crowded Zen workspaces, with Stop, Undo and optional review.",

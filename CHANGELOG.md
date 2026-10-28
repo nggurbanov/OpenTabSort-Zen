@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.2 — Unreleased
+
+- Keep operation feedback in Zen's stable sidebar toolbar, outside scrolling tabs, so Stop and Undo remain visible before and after sorting large workspaces.
+- Check actual viewport visibility in the native screenshot acceptance gate.
+
 ## 2.0.1 — Planned / Unreleased
 
 - Replace the floating progress panel with a quiet 32px row in Zen's sidebar. Keep contextual Stop, Undo, Setup, and keyboard dismissal; retain full status in the tooltip and accessible label.

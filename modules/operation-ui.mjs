@@ -96,10 +96,18 @@ const createRow = (className, label, message) => {
   listen(window, "unload", remove);
   const candidates = [...document.querySelectorAll(`#${CONFIG.BUTTON_ID}`)];
   const anchor = candidates.find((node) => { const rect = node.getBoundingClientRect(); return rect.width > 0 && rect.height > 0; });
-  const separator = anchor?.closest(".pinned-tabs-container-separator");
-  if (separator?.parentElement) {
+  // Workspace separators live inside Zen's tab scroll area. Native selected-tab
+  // scrolling can move them thousands of pixels offscreen after applying a plan.
+  // The outer toolbox is the stable sidebar column; keep feedback before its
+  // tab-area child so Stop and Undo remain reachable at every scroll position.
+  const sidebar = document.getElementById("navigator-toolbox");
+  const tabArea = document.getElementById("titlebar");
+  const sidebarBounds = sidebar?.getBoundingClientRect();
+  const stableSidebar = tabArea?.parentElement === sidebar && sidebarBounds?.width >= 120 &&
+    window.getComputedStyle(sidebar).flexDirection === "column";
+  if (stableSidebar) {
     root.setAttribute("data-placement", "sidebar");
-    separator.parentElement.insertBefore(root, separator.nextSibling);
+    sidebar.insertBefore(root, tabArea);
   } else {
     root.setAttribute("data-placement", "overlay");
     const position = () => {
