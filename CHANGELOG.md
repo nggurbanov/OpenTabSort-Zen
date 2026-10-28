@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.2 — 2026-10-28
+
+- Stop the settings discovery observer from refreshing an already-injected editor. Category refresh replaces DOM children and previously re-triggered discovery indefinitely, freezing Zen and causing runaway parent-process memory growth.
+- Keep refresh-on-reopen in the separate dialog `open` attribute observer; add regression coverage for repeated discovery and editor child mutations.
+
 ## 1.4.1 — 2026-09-30
 
 - Added an editable full decision API endpoint alongside the unrestricted model ID and provider key; existing TypeSafe settings remain valid.

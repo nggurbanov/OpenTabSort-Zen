@@ -43,6 +43,8 @@ Refetched on every dialog open with a `?t=<timestamp>` cache-buster, so iterativ
 
 Sine reuses the same `<dialog>` element across open/close cycles. Our injected widget persists in DOM. When the dialog opens, we want the widget to reflect any pref changes that happened while it was closed (e.g. via the tab right-click "Add to Rule…" submenu or an AI Pass 2 rule-grow).
 
+The dialog-discovery observer only initializes missing editors. Once `.zao-rules-editor` exists, discovery returns without refreshing either editor. The saved-category refresh replaces DOM children; calling it from the `childList` discovery observer creates a self-triggering mutation loop.
+
 Two refresh paths converge here:
 1. **Pref observer in widget.mjs** — fires immediately if the rules pref changes while the dialog is open.
 2. **MutationObserver on dialog `[open]` attribute** — fires when `showModal()` is called, refreshing the widget from the pref AND re-running `updateConditionalFields` (in case Sine re-rendered the AI rows on reopen).

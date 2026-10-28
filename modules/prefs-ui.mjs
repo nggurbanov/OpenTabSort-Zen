@@ -834,12 +834,10 @@ const onOurDialogFound = (dialog) => {
   // so we don't restyle SuperPins or any other mod's section headers.
   dialog.classList.add("zao-our-dialog");
 
-  if (dialog.querySelector(".zao-rules-editor")) {
-    const editor = dialog.querySelector(".zao-rules-editor");
-    editor?._zaoRefresh?.("dialog reopened");
-    dialog.querySelector(".zao-jev-category-settings")?._zaoRefresh?.();
-    return;
-  }
+  // Child mutations from our editors must not refresh the dialog: category
+  // refresh replaces its children and would feed this observer indefinitely.
+  // Reopening is handled by the separate observer of the dialog's open attribute.
+  if (dialog.querySelector(".zao-rules-editor")) return;
 
   if (!dialog._zaoOpenWatcher) {
     const watcher = new MutationObserver(() => {
