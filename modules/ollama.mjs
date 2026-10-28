@@ -31,8 +31,9 @@ const ollamaJson = async (host, model, prompt) => {
   if (!result.ok) {
     const error = new Error(result.error);
     error.status = result.status;
+    error.code = result.code;
     error.terminal = result.status >= 400 && result.status < 500;
-    error.retryable = result.errorType !== "network" && result.errorType !== "http";
+    error.retryable = result.errorType !== "network" && result.errorType !== "http" && result.errorType !== "output-limit";
     throw error;
   }
   if (!result.parsed || typeof result.parsed !== "object" || Array.isArray(result.parsed)) throw new Error("Ollama returned non-object JSON");

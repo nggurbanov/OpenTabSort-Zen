@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.3 — Unreleased
+
+- Recover explicit AI output limits automatically: infer one workspace taxonomy, classify batches of up to 50 tabs, and halve only a truncated batch. Keep the same selected provider and model.
+- Bound recovery requests and duration; preserve the entire layout if any recovery request or assignment validation fails. Stop aborts the current request. Complete successful answers can still leave ambiguous tabs unresolved.
+- Preserve typed output-limit failures across OpenAI, Gemini, compatible gateways, and Ollama. Honor the primary planner's bounded 8192-token allowance on Ollama and prevent legacy Ollama retry storms.
+- Add forced-truncation native Zen acceptance for 300 tabs, Undo, cancellation, and a later authentication failure. See [output recovery verification](docs/output-recovery-verification.md).
+
 ## 2.0.2 — Unreleased
 
 - Keep operation feedback in Zen's stable sidebar toolbar, outside scrolling tabs, so Stop and Undo remain visible before and after sorting large workspaces.

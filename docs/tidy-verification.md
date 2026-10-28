@@ -2,6 +2,8 @@
 
 Verified source update: **2.0.2**, including the 2.0.1 Tidy changes, in the `OpenTabSort-Zen` repository on `fix/tidy-interaction`. This is a dated follow-up; [the 2.0.0 verification record](overhaul-verification.md) remains historical.
 
+> Historical 2.0.2 record. A later user report reproduced the short-answer failure label despite the raised cap. The cap alone is not a reliability fix; [2.0.3 adds bounded automatic recovery](output-recovery-verification.md).
+
 ## Resulting behavior
 
 - A transparent native sidebar toolbar row, 32px high and outside the scrolling tab list, provides short status and contextual Stop, Undo, or Setup. The full message remains in the tooltip and accessible label. Essential styles are injected before the row appears.

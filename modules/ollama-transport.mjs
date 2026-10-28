@@ -108,7 +108,7 @@ export const checkOllamaReady = async (host, model) => {
  *
  * Result shape:
  *   { ok: true,  parsed }
- *   { ok: false, error, errorType: "network"|"http"|"empty"|"parse" }
+ *   { ok: false, error, errorType: "network"|"http"|"empty"|"parse"|"output-limit" }
  *
  * The caller decides whether `parsed` is the right shape (object vs array).
  */
@@ -120,7 +120,7 @@ export const ollamaGenerateJson = async (host, model, prompt, maxTokens = 4096, 
       signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model, prompt, stream: false, format: "json",
-        options: { temperature: 0, seed: 42, num_predict: Math.min(4096, Math.max(64, Number.isFinite(maxTokens) ? Math.trunc(maxTokens) : 4096)) },
+        options: { temperature: 0, seed: 42, num_predict: Math.min(8192, Math.max(64, Number.isFinite(maxTokens) ? Math.trunc(maxTokens) : 4096)) },
         ...withKeepAlive(),
       }),
     }, GENERATE_TIMEOUT_MS, async (res) => {
@@ -132,6 +132,10 @@ export const ollamaGenerateJson = async (host, model, prompt, maxTokens = 4096, 
       try { data = await res.json(); } catch (error) {
         if (error.name === "AbortError") throw error;
         return { ok: false, errorType: "parse", error: "Ollama returned invalid response JSON" };
+      }
+      signal?.throwIfAborted();
+      if (data?.done_reason === "length") {
+        return { ok: false, errorType: "output-limit", code: "PROVIDER_OUTPUT_LIMIT", error: "Ollama response reached its output limit" };
       }
       const text = typeof data?.response === "string" ? data.response.trim() : "";
       if (!text) return { ok: false, errorType: "empty", error: "Ollama returned empty response" };

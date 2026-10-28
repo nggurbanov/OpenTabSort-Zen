@@ -19,9 +19,9 @@ export const startFixturePageServer = () => startServer((request, response) => {
   ].join(""));
 });
 
-export const startProviderServer = async (providerMode = "fake") => {
+export const startProviderServer = async (providerMode = "fake", { beforeFakeResponse } = {}) => {
   const calls = [];
-  const handler = providerMode === "real" ? realProviderHandler(calls, realProviderConfig()) : fakeProviderHandler(calls);
+  const handler = providerMode === "real" ? realProviderHandler(calls, realProviderConfig()) : fakeProviderHandler(calls, beforeFakeResponse);
   const server = await startServer(handler);
   return { ...server, calls, mode: providerMode };
 };
@@ -37,11 +37,14 @@ const startServer = (handler) => new Promise((resolvePromise) => {
   });
 });
 
-const fakeProviderHandler = (calls) => async (request, response) => {
+const fakeProviderHandler = (calls, beforeFakeResponse) => async (request, response) => {
   const { body, rawBody } = await readJsonBody(request);
   const lines = promptLines(body);
   calls.push({ provider: "fake", tabCount: lines.length, requestBytes: Buffer.byteLength(rawBody) });
   const content = String(body.messages?.[0]?.content || "");
+  // Disposable native acceptance tests may pause or replace a fake response.
+  // Production and real-provider requests never enter this hook.
+  if (await beforeFakeResponse?.({ body, content, lines, request, response })) return;
   let assignments;
   if (content.startsWith("AI WORKSPACE GROUPING")) {
     assignments = { groups: GOLD_FAMILIES.map((name) => ({

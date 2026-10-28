@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { planAIWorkspace, FAST_WORKSPACE_PROMPT_LIMIT, FAST_WORKSPACE_TAB_LIMIT } from "../modules/ai-workspace-plan.mjs";
+import { planAIWorkspace, FAST_WORKSPACE_PROMPT_LIMIT, FAST_WORKSPACE_TAB_LIMIT, RECOVERY_BATCH_SIZE, RECOVERY_TIMEOUT_MS, recoveryRequestLimit } from "../modules/ai-workspace-plan.mjs";
 import { PROVIDER_TAB_BATCH_SIZE } from "../modules/provider-batching.mjs";
 import { CATEGORY_INPUT_LIMIT } from "../modules/jev-categories.mjs";
 import { validateAIPlan } from "../modules/sort-plan.mjs";
@@ -545,4 +545,362 @@ test("the real custom transport sends the full bounded reasoning budget for a 30
   assert.equal(calls, 1); assert.equal(plan.failed, undefined);
   assert.equal(plan.newGroups[0].tabs.length, 300);
   assert.doesNotThrow(() => validateAIPlan(plan, input));
+});
+
+
+const outputLimit = () => Object.assign(new Error("Provider response reached its output limit"), {
+  code: "PROVIDER_OUTPUT_LIMIT", retryable: false,
+});
+const allPlanned = (plan) => [...plan.assignedToExisting.map((entry) => entry.tabInfo), ...plan.newGroups.flatMap((group) => group.tabs), ...plan.unresolved];
+
+test("a truncated 300-tab fast answer recovers atomically through one global taxonomy and six smaller batches", async (t) => {
+  install(t);
+  const input = makeTabs(300), original = structuredClone(input), seen = [], widths = [];
+  input[0].currentGroup = "Ｂｕｉｌｄ";
+  original[0].currentGroup = input[0].currentGroup;
+  let calls = 0;
+  const plan = await planAIWorkspace(input, { engine: "custom", settings: settingsFor("custom"),
+    generate: async (prompt) => {
+      calls++;
+      if (isFastGrouping(prompt)) throw outputLimit();
+      if (!isClassification(prompt)) {
+        assert.deepEqual(suggestionRows(prompt).map((row) => row.id), input.map((_, index) => "t" + index));
+        return { categories };
+      }
+      const rows = classificationRows(prompt);
+      widths.push(rows.length); seen.push(...rows.map((row) => row.id));
+      assert.deepEqual(classificationCategories(prompt).map((category) => category.name), categories.map((category) => category.name));
+      return assignments(prompt, (row) => Number(row.id.slice(1)) % 2 ? "c1" : "c0");
+    },
+  });
+  assert.equal(calls, 8);
+  assert.deepEqual(widths, Array(6).fill(RECOVERY_BATCH_SIZE));
+  assert.deepEqual(seen, input.map((_, index) => "t" + index));
+  assert.equal(plan.assignedToExisting.length, 150);
+  assert.equal(plan.newGroups[0].tabs.length, 150);
+  assert.equal(plan.failed, undefined);
+  assert.equal(new Set(allPlanned(plan)).size, input.length);
+  assert.ok(allPlanned(plan).every((tab) => input.includes(tab)));
+  assert.doesNotThrow(() => validateAIPlan(plan, input));
+  assert.deepEqual(input, original);
+});
+
+for (const provider of ["openai", "gemini", "custom", "ollama"]) {
+  test(provider + " explicit length envelope enters recovery through the real transport", async (t) => {
+    let calls = 0;
+    install(t, async (_url, init) => {
+      calls++;
+      const body = JSON.parse(init.body);
+      const prompt = provider === "ollama" ? body.prompt : provider === "gemini" ? body.contents[0].parts[0].text : body.messages[0].content;
+      if (isFastGrouping(prompt)) return new Response(JSON.stringify(provider === "ollama"
+        ? { response: "", done: true, done_reason: "length" }
+        : provider === "gemini" ? { candidates: [{ finishReason: "MAX_TOKENS" }] }
+          : { choices: [{ finish_reason: "length", message: { content: null } }] }));
+      const answer = isClassification(prompt) ? assignments(prompt) : { categories };
+      return new Response(JSON.stringify(provider === "ollama" ? { response: JSON.stringify(answer), done_reason: "stop" }
+        : provider === "gemini" ? { candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(answer) }] } }] }
+          : { choices: [{ finish_reason: "stop", message: { content: JSON.stringify(answer) } }] }));
+    });
+    const input = makeTabs(120);
+    const plan = await planAIWorkspace(input, { engine: provider, settings: settingsFor(provider) });
+    assert.equal(calls, 5);
+    assert.equal(plan.failed, undefined);
+    assert.equal(plan.newGroups[0].tabs.length, input.length);
+  });
+}
+
+test("recovery halves a truncated batch immediately, retains its taxonomy and never re-requests successful identities", async (t) => {
+  install(t);
+  const input = makeTabs(120), attempts = [], accepted = [];
+  const plan = await planAIWorkspace(input, { engine: "openai", settings: settingsFor("openai"),
+    generate: async (prompt) => {
+      if (isFastGrouping(prompt)) throw outputLimit();
+      if (!isClassification(prompt)) return { categories };
+      const rows = classificationRows(prompt);
+      attempts.push(rows.map((row) => row.id));
+      assert.deepEqual(rows.map((row) => row.index), rows.map((_, index) => index));
+      if (rows.length > 25) throw outputLimit();
+      accepted.push(...rows.map((row) => row.id));
+      return assignments(prompt, (row) => Number(row.id.slice(1)) % 2 ? "c1" : "c0");
+    },
+  });
+  assert.deepEqual(attempts.map((batch) => batch.length), [50, 25, 25, 25, 25, 20]);
+  assert.deepEqual(accepted, input.map((_, index) => "t" + index));
+  assert.equal(plan.failed, undefined);
+  assert.equal(new Set(allPlanned(plan)).size, input.length);
+  assert.doesNotThrow(() => validateAIPlan(plan, input));
+});
+
+test("a truncated taxonomy splits all inventory and merges its global proposals before assigning any tab", async (t) => {
+  install(t);
+  const input = makeTabs(120), leafIds = [], stages = [];
+  const plan = await planAIWorkspace(input, { engine: "openai", settings: settingsFor("openai"),
+    generate: async (prompt) => {
+      if (isFastGrouping(prompt)) throw outputLimit();
+      if (isClassification(prompt)) {
+        stages.push("assign");
+        assert.deepEqual(leafIds, input.map((_, index) => "t" + index));
+        assert.ok(stages.includes("merge"));
+        return assignments(prompt);
+      }
+      if (prompt.includes("Merge these partial category suggestions")) { stages.push("merge"); return { categories }; }
+      const rows = suggestionRows(prompt);
+      stages.push(rows.length);
+      if (rows.length > 60) throw outputLimit();
+      leafIds.push(...rows.map((row) => row.id));
+      return { categories };
+    },
+  });
+  assert.deepEqual(stages.slice(0, 4), [120, 60, 60, "merge"]);
+  assert.equal(plan.failed, undefined);
+  assert.equal(plan.newGroups[0].tabs.length, input.length);
+});
+
+test("multilingual recovery bounds taxonomy bytes, retains every identity and strips URL secrets", async (t) => {
+  install(t);
+  const input = makeTabs(120).map((tab) => ({ ...tab,
+    title: "Обзор研究🙂".repeat(40), currentGroup: "Текущая研究".repeat(10),
+    url: "https://secret-user:secret-pass@pages.test/docs/" + "p".repeat(180) + "?secret-query#secret-fragment",
+  }));
+  const seen = [];
+  let merges = 0;
+  const plan = await planAIWorkspace(input, { engine: "custom", settings: settingsFor("custom"),
+    generate: async (prompt) => {
+      for (const secret of ["secret-user", "secret-pass", "secret-query", "secret-fragment"]) assert.ok(!prompt.includes(secret));
+      if (isFastGrouping(prompt)) throw outputLimit();
+      if (isClassification(prompt)) return assignments(prompt);
+      assert.ok(Buffer.byteLength(prompt) < 50 * 1024);
+      if (prompt.includes("Merge these partial category suggestions")) merges++;
+      else seen.push(...suggestionRows(prompt).map((row) => row.id));
+      return { categories };
+    },
+  });
+  assert.deepEqual(seen, input.map((_, index) => "t" + index));
+  assert.ok(merges >= 1);
+  assert.equal(plan.failed, undefined);
+  assert.equal(plan.newGroups[0].tabs.length, input.length);
+});
+
+for (const status of [401, 402, 403, 429, 503]) {
+  test("a later recovery failure discards all earlier assignments: HTTP " + status, async (t) => {
+    install(t);
+    const input = makeTabs(120), original = structuredClone(input);
+    let classified = 0, calls = 0;
+    const plan = await planAIWorkspace(input, { engine: "openai", settings: settingsFor("openai"),
+      generate: async (prompt) => {
+        calls++;
+        if (isFastGrouping(prompt)) throw outputLimit();
+        if (!isClassification(prompt)) return { categories };
+        if (++classified === 2) throw Object.assign(new Error("HTTP " + status), { status, terminal: true, retryable: false });
+        return assignments(prompt);
+      },
+    });
+    assert.equal(calls, 4);
+    assert.deepEqual(plan.newGroups, []);
+    assert.deepEqual(plan.assignedToExisting, []);
+    assert.deepEqual(plan.unresolved, input);
+    assert.match(plan.failed, new RegExp(String(status)));
+    assert.deepEqual(input, original);
+  });
+}
+
+for (const failure of [new Error("Provider network request failed"), new Error("Provider timeout"), new Error("Provider response reached its output limit")]) {
+  test("untyped fast failure never starts recovery: " + failure.message, async (t) => {
+    install(t);
+    let calls = 0;
+    const input = makeTabs(120);
+    const plan = await planAIWorkspace(input, { engine: "openai", settings: settingsFor("openai"),
+      generate: async () => { calls++; throw failure; },
+    });
+    assert.equal(calls, 1);
+    assert.deepEqual(plan.unresolved, input);
+    assert.ok(plan.failed);
+  });
+}
+
+for (const phase of ["taxonomy", "classification"]) {
+  test("recovery cancellation during " + phase + " aborts its active request and returns no plan", async (t) => {
+    install(t);
+    const input = makeTabs(120), controller = new AbortController();
+    let started, calls = 0;
+    const ready = new Promise((resolve) => { started = resolve; });
+    const work = planAIWorkspace(input, { engine: "openai", settings: settingsFor("openai"), signal: controller.signal,
+      generate: async (prompt, signal) => {
+        calls++;
+        if (isFastGrouping(prompt)) throw outputLimit();
+        if (phase === "classification" && !isClassification(prompt)) return { categories };
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new DOMException("Stopped", "AbortError")), { once: true });
+          started();
+        });
+      },
+    });
+    await ready;
+    controller.abort();
+    await assert.rejects(work, { name: "AbortError" });
+    assert.equal(calls, phase === "taxonomy" ? 2 : 3);
+  });
+}
+
+test("the recovery deadline aborts a real transport request and leaves the entire workspace unchanged", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let started, calls = 0, aborted = 0;
+  const ready = new Promise((resolve) => { started = resolve; });
+  install(t, async (_url, init) => {
+    calls++;
+    const prompt = JSON.parse(init.body).messages[0].content;
+    if (isFastGrouping(prompt)) return new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: null } }] }));
+    return new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => { aborted++; reject(new DOMException("Stopped", "AbortError")); }, { once: true });
+      started();
+    });
+  });
+  const input = makeTabs(120);
+  const work = planAIWorkspace(input, { engine: "openai", settings: settingsFor("openai") });
+  await ready;
+  t.mock.timers.tick(RECOVERY_TIMEOUT_MS);
+  const plan = await work;
+  assert.equal(calls, 2); assert.equal(aborted, 1);
+  assert.match(plan.failed, /recovery timed out/i);
+  assert.deepEqual(plan.newGroups, []);
+  assert.deepEqual(plan.unresolved, input);
+});
+
+test("a cold Ollama recovery retains its 180-second allowance and aborts at that deadline", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let started, aborted = 0;
+  const ready = new Promise((resolve) => { started = resolve; });
+  install(t, async (_url, init) => {
+    const prompt = JSON.parse(init.body).prompt;
+    if (isFastGrouping(prompt)) return new Response(JSON.stringify({ response: "", done_reason: "length" }));
+    return new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => { aborted++; reject(new DOMException("Stopped", "AbortError")); }, { once: true });
+      started();
+    });
+  });
+  const input = makeTabs(120);
+  const work = planAIWorkspace(input, { engine: "ollama", settings: settingsFor("ollama") });
+  await ready;
+  t.mock.timers.tick(RECOVERY_TIMEOUT_MS);
+  assert.equal(aborted, 0);
+  t.mock.timers.tick(60000);
+  const plan = await work;
+  assert.equal(aborted, 1);
+  assert.match(plan.failed, /recovery timed out/i);
+  assert.deepEqual(plan.unresolved, input);
+});
+
+test("recovery request exhaustion is bounded and discards successful earlier batches", async (t) => {
+  install(t);
+  const input = makeTabs(300);
+  let calls = 0, accepted = 0;
+  const plan = await planAIWorkspace(input, { engine: "custom", settings: settingsFor("custom"),
+    generate: async (prompt) => {
+      calls++;
+      if (isFastGrouping(prompt)) throw outputLimit();
+      if (!isClassification(prompt)) return { categories };
+      if (classificationRows(prompt).length > 1) throw outputLimit();
+      accepted++;
+      return assignments(prompt);
+    },
+  });
+  assert.equal(calls, 1 + recoveryRequestLimit(input.length));
+  assert.ok(accepted > 0);
+  assert.deepEqual(plan.newGroups, []);
+  assert.deepEqual(plan.assignedToExisting, []);
+  assert.deepEqual(plan.unresolved, input);
+  assert.match(plan.failed, /after smaller requests/);
+});
+
+test("persistent taxonomy output limits terminate without classification or arbitrary grouping", async (t) => {
+  install(t);
+  const input = makeTabs(300);
+  let calls = 0;
+  const plan = await planAIWorkspace(input, { engine: "openai", settings: settingsFor("openai"),
+    generate: async (prompt) => { calls++; assert.ok(!isClassification(prompt)); throw outputLimit(); },
+  });
+  assert.ok(calls <= 1 + recoveryRequestLimit(input.length));
+  assert.deepEqual(plan.newGroups, []);
+  assert.deepEqual(plan.unresolved, input);
+  assert.match(plan.failed, /output limit/);
+});
+
+test("complete recovery responses may explicitly leave ambiguous tabs unresolved", async (t) => {
+  install(t);
+  const input = makeTabs(120);
+  const plan = await planAIWorkspace(input, { engine: "custom", settings: settingsFor("custom"),
+    generate: async (prompt) => {
+      if (isFastGrouping(prompt)) throw outputLimit();
+      if (!isClassification(prompt)) return { categories };
+      return assignments(prompt, (row) => Number(row.id.slice(1)) % 2 ? "unresolved" : "c0");
+    },
+  });
+  assert.equal(plan.failed, undefined);
+  assert.equal(plan.newGroups[0].tabs.length, 60);
+  assert.deepEqual(plan.unresolved, input.filter((_, index) => index % 2));
+  assert.doesNotThrow(() => validateAIPlan(plan, input));
+});
+
+for (const allUnresolved of [false, true]) {
+  test("recovery rejects missing or all-unresolved assignments without partial application: " + allUnresolved, async (t) => {
+    install(t);
+    const input = makeTabs(120);
+    const plan = await planAIWorkspace(input, { engine: "openai", settings: settingsFor("openai"),
+      generate: async (prompt) => {
+        if (isFastGrouping(prompt)) throw outputLimit();
+        if (!isClassification(prompt)) return { categories };
+        return allUnresolved ? assignments(prompt, () => "unresolved") : { 0: "c0" };
+      },
+    });
+    assert.deepEqual(plan.newGroups, []);
+    assert.deepEqual(plan.unresolved, input);
+    assert.ok(plan.failed);
+  });
+}
+
+
+for (const failedBatch of [1, 2]) {
+  test("a 301-tab taxonomy classification limit also recovers atomically after batch " + failedBatch, async (t) => {
+    install(t);
+    const input = makeTabs(301);
+    let taxonomyCalls = 0, classified = 0;
+    const accepted = [];
+    const plan = await planAIWorkspace(input, { engine: "openai", settings: settingsFor("openai"),
+      generate: async (prompt) => {
+        assert.ok(!isFastGrouping(prompt));
+        if (!isClassification(prompt)) { taxonomyCalls++; return { categories }; }
+        if (++classified === failedBatch) throw outputLimit();
+        if (taxonomyCalls === 2) accepted.push(...classificationRows(prompt).map((row) => row.id));
+        return assignments(prompt);
+      },
+    });
+    assert.equal(taxonomyCalls, 2);
+    assert.deepEqual(accepted, input.map((_, index) => "t" + index));
+    assert.equal(plan.failed, undefined);
+    assert.equal(plan.newGroups[0].tabs.length, input.length);
+    assert.equal(new Set(allPlanned(plan)).size, input.length);
+  });
+}
+
+
+test("taxonomy reduction drops unsolicited examples and bounds even maximum-length multilingual category summaries", async (t) => {
+  install(t);
+  const input = makeTabs(120).map((tab) => ({ ...tab, title: "研究".repeat(90), currentGroup: "仕事".repeat(40) }));
+  const verboseCategories = Array.from({ length: 10 }, (_, index) => ({
+    name: index + "組".repeat(79), description: "範囲".repeat(300), examples: Array(3).fill("EXTRANEOUS" + "例".repeat(210)),
+  }));
+  let merges = 0;
+  const plan = await planAIWorkspace(input, { engine: "custom", settings: settingsFor("custom"),
+    generate: async (prompt) => {
+      if (isFastGrouping(prompt)) throw outputLimit();
+      if (isClassification(prompt)) return assignments(prompt);
+      assert.ok(Buffer.byteLength(prompt) < 50 * 1024);
+      if (prompt.includes("Merge these partial category suggestions")) { merges++; assert.ok(!prompt.includes("EXTRANEOUS")); }
+      return { categories: verboseCategories };
+    },
+  });
+  assert.ok(merges > 0);
+  assert.equal(plan.failed, undefined);
+  assert.ok(plan.categories.every((category) => category.examples.length === 0));
+  assert.equal(plan.newGroups[0].tabs.length, input.length);
 });

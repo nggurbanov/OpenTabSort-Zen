@@ -284,14 +284,17 @@ const providerText = async (settings, prompt, maxTokens, signal = getActiveSortS
       error.terminal = true; error.retryable = false;
       throw error;
     }
-    const finish = envelope?.choices?.[0]?.finish_reason ?? envelope?.candidates?.[0]?.finishReason;
-    if (finish === "length" || finish === "MAX_TOKENS") {
-      const error = new Error("Provider response reached its output limit");
+    const finish = envelope?.choices?.[0]?.finish_reason ?? envelope?.candidates?.[0]?.finishReason ?? envelope?.done_reason;
+    if (finish === "content_filter" || finish === "SAFETY" || envelope?.choices?.[0]?.message?.refusal) {
+      const error = new Error("Provider response was blocked");
       error.retryable = false;
       throw error;
     }
-    if (finish === "content_filter" || finish === "SAFETY" || envelope?.choices?.[0]?.message?.refusal) {
-      const error = new Error("Provider response was blocked");
+    if (finish === "length" || finish === "MAX_TOKENS") {
+      // Only an explicit provider stop reason can enable smaller-request recovery.
+      // A complete JSON object may still omit tabs, so never accept this answer.
+      const error = new Error("Provider response reached its output limit");
+      error.code = "PROVIDER_OUTPUT_LIMIT";
       error.retryable = false;
       throw error;
     }

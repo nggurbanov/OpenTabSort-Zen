@@ -4,7 +4,7 @@ Hundreds of tabs, one button. OpenTabSort uses AI to organize the active [Zen Br
 
 Set up an AI connection once, then click the wand. AI works out the groups from your tabs. A quiet sidebar row shows progress and **Stop**; **Undo** appears when sorting finishes.
 
-Development version: **2.0.2, planned / unreleased**. Based on the MIT-licensed [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand).
+Development version: **2.0.3, planned / unreleased**. Based on the MIT-licensed [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand).
 
 ## Install
 
@@ -31,7 +31,7 @@ Pinned and essential tabs, tabs in other workspaces, and excluded domains stay i
 | **Custom endpoint** | Endpoint, model, optional API key, and consent. Existing protocol options remain in Advanced. |
 | **Decision models** | Decision endpoint, model, key, consent, and an AI connection for automatically creating groups. |
 
-Chat providers and Ollama group a normal workspace of up to 300 tabs in one compact request, with a 72 KiB prompt limit. Larger inventories use a shared taxonomy and bounded classification batches. Decision models create fresh categories before live classification. Built-in local AI uses embedding-based clustering; its grouping and naming differ from a chat model.
+Chat providers and Ollama group a normal workspace of up to 300 tabs in one compact request, with a 72 KiB prompt limit. An explicitly cut-short answer automatically recovers with a shared taxonomy and smaller classification batches. Recovery has request/time limits and applies nothing if a later request fails. Larger inventories use a shared taxonomy and bounded classification batches. Decision models create fresh categories before live classification. Built-in local AI uses embedding-based clustering; its grouping and naming differ from a chat model.
 
 For Ollama, install it from [ollama.com](https://ollama.com), run `ollama pull qwen2.5:1.5b`, then select Ollama in AI setup. Model loading happens on demand; startup warming is off by default.
 
