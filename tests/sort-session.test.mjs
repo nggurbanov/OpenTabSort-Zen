@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CONFIG } from "../modules/config.mjs";
-import { beginSortSession, getActiveSortSignal, throwIfSortCancelled, reportSortProgress, stopActiveSort } from "../modules/sort-session.mjs";
+import { beginSortSession, getActiveSortSignal, throwIfSortCancelled, reportSortProgress, stopActiveSort, primarySortPrefNames } from "../modules/sort-session.mjs";
 
 const makeEnvironment = () => {
   const observers = new Set(), windows = [];
@@ -10,11 +10,16 @@ const makeEnvironment = () => {
     removeObserver: (_prefix, observer) => observers.delete(observer),
   } };
   const makeWindow = () => {
-    const listeners = new Map(), tabListeners = new Map(), progress = new Set();
+    const listeners = new Map(), tabListeners = new Map(), progress = new Set(), workspaceListeners = new Set();
     const register = (map, name, callback) => { if (!map.has(name)) map.set(name, new Set()); map.get(name).add(callback); };
     const win = {
       addEventListener: (name, callback) => register(listeners, name, callback),
       removeEventListener: (name, callback) => listeners.get(name)?.delete(callback),
+      gZenWorkspaces: { activeWorkspace: "w1",
+        addChangeListeners: (callback) => workspaceListeners.add(callback),
+        removeChangeListeners: (callback) => workspaceListeners.delete(callback),
+      },
+      switchWorkspace(id) { this.gZenWorkspaces.activeWorkspace = id; for (const callback of workspaceListeners) callback(); },
       gBrowser: {
         tabContainer: {
           addEventListener: (name, callback) => register(tabListeners, name, callback),
@@ -23,10 +28,10 @@ const makeEnvironment = () => {
         addTabsProgressListener: (listener) => progress.add(listener),
         removeTabsProgressListener: (listener) => progress.delete(listener),
       },
-      emitTab: (name) => { for (const callback of tabListeners.get(name) || []) callback(); },
+      emitTab: (name, target) => { for (const callback of tabListeners.get(name) || []) callback({ type: name, target }); },
       emitWindow: (name) => { for (const callback of listeners.get(name) || []) callback(); },
-      navigate: () => { for (const listener of progress) listener.onLocationChange(); },
-      listenerCount: () => [...listeners.values(), ...tabListeners.values()].reduce((sum, callbacks) => sum + callbacks.size, 0) + progress.size,
+      navigate: (...args) => { for (const listener of progress) listener.onLocationChange(...args); },
+      listenerCount: () => [...listeners.values(), ...tabListeners.values()].reduce((sum, callbacks) => sum + callbacks.size, 0) + progress.size + workspaceListeners.size,
     };
     windows.push(win);
     return win;
@@ -149,4 +154,47 @@ test("disposed session references and stale observer callbacks cannot abort its 
   session.stop("stale");
   assert.doesNotThrow(() => session.checkpoint());
   assert.equal(session.signal.aborted, false);
+}));
+
+
+test("primary preference watching follows only the selected providers and current operation", () => withEnvironment(({ makeWindow, notify }) => {
+  globalThis.window = makeWindow();
+  const session = beginSortSession({ prefNames: primarySortPrefNames("custom"), preferenceReason: "settings" });
+  for (const pref of [CONFIG.AI_OPENAI_MODEL_PREF, CONFIG.AI_GEMINI_MODEL_PREF, CONFIG.AI_OLLAMA_WARMUP_PREF, CONFIG.RULES_PREF, CONFIG.AI_JEV_CATEGORIES_PREF]) notify(pref);
+  assert.equal(session.signal.aborted, false);
+  notify(CONFIG.AI_CUSTOM_MODEL_PREF);
+  assert.equal(session.signal.aborted, true);
+  assert.equal(session.reason, "settings");
+  session.dispose();
+}));
+
+test("Decision primary preferences include its selected category provider without saved categories or legacy preview", () => {
+  const names = primarySortPrefNames("jev", "custom");
+  for (const name of [CONFIG.AI_JEV_MODEL_PREF, CONFIG.AI_JEV_CATEGORY_PROVIDER_PREF, CONFIG.AI_CUSTOM_MODEL_PREF, CONFIG.AI_PROVIDER_CONSENT_PREF, CONFIG.SKIP_DOMAINS_PREF]) assert.ok(names.includes(name));
+  for (const name of [CONFIG.AI_OPENAI_MODEL_PREF, CONFIG.AI_JEV_CATEGORIES_PREF, CONFIG.AI_JEV_PREVIEW_PREF, CONFIG.AI_JEV_CATEGORY_SOURCE_PREF, CONFIG.RULES_PREF]) assert.ok(!names.includes(name));
+});
+
+test("native workspace change callbacks abort the pending request with a specific reason and are cleaned up", () => withEnvironment(async ({ makeWindow }) => {
+  const win = makeWindow(); globalThis.window = win;
+  const session = beginSortSession({ isCurrent: () => win.gZenWorkspaces.activeWorkspace === "w1" ? true : "workspace" });
+  win.switchWorkspace("w2");
+  await Promise.resolve();
+  assert.equal(session.signal.aborted, true);
+  assert.equal(session.reason, "workspace");
+  session.dispose();
+  assert.equal(win.listenerCount(), 0);
+}));
+
+test("snapshot edit callbacks receive every event even while checkpoint work is coalesced", () => withEnvironment(async ({ makeWindow }) => {
+  const win = makeWindow(); globalThis.window = win;
+  const events = [], navigations = [];
+  const session = beginSortSession({ onTabChange: (event) => event && events.push(event), onLocationChange: (...args) => navigations.push(args) });
+  const first = {}, second = {}, browser = {};
+  win.emitTab("TabMove", first); win.emitTab("TabGrouped", second);
+  win.navigate(browser, { isTopLevel: true }, null, { spec: "https://pages.test/" });
+  await Promise.resolve();
+  assert.deepEqual(events.map((event) => event.target), [first, second]);
+  assert.equal(navigations[0][0], browser);
+  assert.equal(session.signal.aborted, false);
+  session.dispose();
 }));

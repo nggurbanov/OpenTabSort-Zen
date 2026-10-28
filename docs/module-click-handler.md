@@ -1,13 +1,13 @@
-# `modules/click-handler.mjs` — sorting orchestration
+# `modules/click-handler.mjs` — primary sorting orchestration
 
-`handleOrganizeClick()` runs one sort at a time. It loads runnable rules, captures the eligible tab list and current workspace, excludes skip-domain matches, and plans deterministic rule moves without modifying the DOM.
+`handleOrganizeClick()` runs one AI sort per browser window. An unconfigured provider opens setup without making a request. The primary action uses no saved matching rules or manually maintained category list and saves neither.
 
-Rules + AI classifies unmatched tabs. Full AI and Fresh/Preview Only classify all eligible non-skipped tabs. Local, Ollama, and remote providers share the same apply boundary. Ollama can also propose reviewed title-rule changes.
+It captures the initial active-workspace native references and metadata, filters excluded domains, and starts a cancellable session. Chat/Ollama use `ai-workspace-plan.mjs`; built-in local AI uses its fresh embedding pipeline; Decision uses the buffered `ai-decision-plan.mjs`. Every primary engine finishes planning before native placement. Optional review uses the common plan modal.
 
-Rule-saving remote/Ollama plans and all new-rule plans open the preview. Local planned/existing reassignment controls stay disabled because those controls require a constrained classifier; they never silently switch to Ollama. Remote providers use the selected service for reassignment.
+`sort-reconciliation.mjs` validates current native identities and eligibility before apply. Background title updates and additions or closures do not cancel unaffected assignments. New tabs stay outside the operation; navigated, pinned, manually moved or regrouped tabs and renamed/moved groups are protected. Selected AI settings, metadata consent and workspace changes still abort pending requests with specific Retry or Setup feedback.
 
-Cancel returns before group consolidation, tab moves, strict-rule ejection, rule persistence, ordering, or styling. After asynchronous work, the workspace, tab references/order/URLs/titles/membership, and rule preference must still match the captured snapshot. `sort-plan.mjs` validates every assigned live tab exactly once before any application.
+The handler captures the Undo baseline immediately before synchronous `applyPass2()`, removes planning observers before its own native moves, and records one session receipt. Undo therefore preserves browsing activity during planning. Later title changes alone do not invalidate the receipt; later conflicting layout changes do.
 
-An accepted plan consolidates duplicate labels, parks explicitly skipped domains, applies rule moves where applicable, then applies AI moves. Failed/skipped AI tabs retain their membership. Strict mode protects unresolved classifications. Cleanup removes empty groups only in the original workspace and resynchronizes Zen’s tab containers.
+`handleLegacyOrganizeClick()` shares the per-window exclusivity guard and lazily imports `legacy-sort.mjs` for **Run advanced sorting**. Its saved-rule, Full AI, Fresh/Preview Only, title-learning, persistence and progressive Decision behavior remain separate.
 
-Full AI, Fresh Rebuild, and Preview Only supply transient apply options with rule persistence disabled. Existing manual groups are not dissolved as a pre-pass: matched tabs can move to the renamed rule without destroying unmatched tabs.
+See [architecture](architecture.md), [Advanced behavior](advanced.md), and [native concurrent-browsing verification](live-sort-verification.md).

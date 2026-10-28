@@ -14,13 +14,15 @@ npm run benchmark -- 4a511d4
 ZEN_BINARY=/path/to/zen SINE_PROFILE=/path/to/sine/profile npm run e2e:operations
 ZEN_BINARY=/path/to/zen SINE_PROFILE=/path/to/sine/profile npm run e2e:settings
 ZEN_BINARY=/path/to/zen SINE_PROFILE=/path/to/sine/profile npm run e2e:jev
+ZEN_BINARY=/path/to/zen SINE_PROFILE=/path/to/sine/profile npm run e2e:live-sort
 ```
 
 | Command | Evidence |
 | --- | --- |
 | `e2e:operations` | Sine-loaded Stop, setting-change invalidation, native group/order/collapse Undo, and preview cancellation. |
 | `e2e:settings` | Visible AI setup, provider-specific fields, consent/key masking, keyboard interaction, lazy Advanced, preserved saved data, and narrow/light/dark UI receipts. |
-| `e2e:jev` | Decision sorting, bounded batches, completed-batch recovery, stale requests, category behavior, and optional preview integration. |
+| `e2e:jev` | Primary buffered Decision planning, title updates, Stop/auth failure before placement, common plan preview/apply/Undo, plus retained Advanced progressive batches and category editing. |
+| `e2e:live-sort` | Browsing during a held primary request, original-tab reconciliation, native identity and Undo preservation. See the dated verification record for completed results. |
 | `benchmark` | Static import closure and a synthetic controlled page-transfer fixture; no real browser heap/RSS measurement. |
 
 `SETTINGS_QA_OUTPUT=/tmp/opentabsort-ui` selects the settings receipt/screenshot directory. The specialized Jev runner accepts `JEV_QA_SCREENSHOT` and optional `JEV_QA_SETTINGS=1`; the standalone settings suite provides the main setup coverage.
@@ -42,4 +44,4 @@ Use `node scripts/e2e-zen.mjs --help` for supported options. `--provider real` u
 
 The runners remove their lab profiles and terminate their own browser/server processes in cleanup. Receipts and screenshots outside the repository are local evidence artifacts and should be copied deliberately if they need long-term retention.
 
-See [the overhaul verification record](overhaul-verification.md) for the dated results and their limits.
+See [the browsing-during-sort record](live-sort-verification.md) for the 2.0.5 checks and [the overhaul verification record](overhaul-verification.md) for earlier dated results and their limits.

@@ -17,12 +17,12 @@ AI engines, previews, the legacy orchestrator, and the advanced rule/icon editor
 `click-handler.mjs` owns the primary wand flow:
 
 1. Check the chosen engine, connection readiness, and required consent. An unconfigured click opens setup without an AI request.
-2. Capture active-workspace tab references, relevant settings, native layout, and eligible-tab membership. Filter excluded domains without moving them.
+2. Capture active-workspace native tab references, their initial metadata/membership/order, and relevant settings. Filter excluded domains without moving them; new tabs do not join this operation.
 3. Start a cancellable `sort-session.mjs` operation with compact sidebar feedback.
 4. Produce a transient plan using the selected engine.
 5. Optionally review the plan when `ai-review-before-apply` is enabled; it defaults to false.
-6. Recheck the captured state and validate that assignments reference eligible original tabs only once.
-7. Apply native placements, record session Undo, update Zen bookkeeping, and report the outcome.
+6. Validate the returned plan against original requested references, reconcile it against current eligible native tabs, then validate the filtered plan. Protect intervening navigation and manual layout edits without cancelling unaffected assignments.
+7. Capture the current native layout immediately before synchronous apply, place the reconciled tabs, record session Undo, update Zen bookkeeping, and report the outcome.
 
 Saved matching rules, saved category lists, and advanced persistence settings do not constrain the main action. Existing group labels remain context for AI and may be reused when a proposed name matches. No rules are saved by this path.
 
@@ -54,23 +54,27 @@ The built-in option lazily loads `ai.mjs` and calls its fresh clustering pipelin
 
 ### Decision planning
 
-`jev-sort.mjs` uses the configured suggestion AI to generate fresh categories for each primary run. `sourceOverride: "suggest"` bypasses saved/manual category selection; `persistCategories: false` leaves the saved category list intact.
+`ai-decision-plan.mjs` uses the configured suggestion AI to infer fresh categories from all initial compact tab metadata. It does not read or overwrite saved categories. Category requests use the selected provider's verified workspace output budget. The same credentials/query/fragment/control-character sanitization applies before both providers receive metadata.
 
-The decision provider classifies bounded batches against that category vocabulary and applies completed batches live. Stop or failure retains completed batches; unprocessed and uncertain tabs keep their current membership. The shared review preference controls category preview.
+`sortJevBatches` classifies up to 30 tabs per request, reducing width to fit the Decision context budget. Its primary callback only buffers assignments; it performs no native moves. A later HTTP/network/authentication error or missing/malformed answer discards all buffered assignments. Complete `none` and low-confidence decisions are valid skips. Stop and session cancellation propagate through the current request and prevent the common apply step.
+
+The resulting plan references original tab objects and shares the primary plan preview, snapshot reconciliation, native application and Undo. Optional review happens after classification and before any native placement. `jev-sort.mjs` remains the separate Advanced progressive path with its existing category editor and completed-batch recovery.
 
 ## Interruption, application, and recovery
 
-`sort-session.mjs` owns abort propagation, progress, state checks, and cleanup. Workspace, tab, or relevant preference changes invalidate pending work. Requests and page-context work receive the operation's abort signal.
+`sort-session.mjs` owns abort propagation, progress, state checks, and cleanup. Primary work stops when the active workspace, selected engine/provider settings, metadata consent, exclusions or review preference changes. Unused providers and preserved legacy rules/categories are outside the primary settings guard. Requests and page-context work receive the operation's abort signal.
 
-Chat, Ollama, built-in local, and advanced rule sorting plan before applying. Stop during planning leaves layout unchanged. Decision sorting is incremental, so it keeps completed moves and offers Undo.
+`sort-reconciliation.mjs` tracks original native identities and structural/navigation events while the user continues browsing. Titles, favicons and loading attributes do not invalidate the operation. Added tabs stay outside the plan; closed tabs are removed. Navigated, pinned, manually reordered/regrouped tabs and renamed or moved groups are protected. Surviving original references are compared in projected order, so an unrelated insertion or closure is not mistaken for a reorder. Protected destination names cannot absorb other planned tabs.
+
+Every primary engine plans before applying, including Decision. Stop during planning leaves layout unchanged. Advanced rule planning retains strict state validation; Advanced Decision sorting remains incremental and keeps completed moves with Undo.
 
 `apply-placement.mjs` handles native move failures and attempts to restore the affected placement. `apply-plan.mjs` is shared by the primary and advanced orchestrators. Sorting moves original tab nodes; it does not close and recreate their browsing state.
 
-`operation-ui.mjs` injects its essential styles directly, so first feedback does not depend on Sine resolving an external sheet. The default surface is a transparent 32px row in the stable sidebar toolbar, outside the scrolling tabs; a bounded overlay is used only when no suitable sidebar anchor exists. It shows Stop while busy and contextual Undo or Setup afterward. Successful rows dismiss after five seconds, pausing while hovered or focused. Error rows offering setup remain until dismissed. Removing feedback cleans up timers/listeners without deleting the Undo receipt.
+`operation-ui.mjs` injects its essential styles directly, so first feedback does not depend on Sine resolving an external sheet. The default surface is a transparent 32px row in the stable sidebar toolbar, outside the scrolling tabs; a bounded overlay is used only when no suitable sidebar anchor exists. It shows Stop while busy and contextual Undo, Retry or Setup afterward. Workspace/setup changes and Stop have concise distinct labels; revoked sharing consent offers Setup. Successful rows dismiss after five seconds, pausing while hovered or focused. Recovery rows offering Retry or Setup remain until dismissed. Removing feedback cleans up timers/listeners without deleting the Undo receipt.
 
 `tidy-motion.mjs` captures only eligible visible rows before native placement, then plays a bounded FLIP translation after placement: at most 40 rows, 260ms, no awaited delay. It animates independent translation on the tab stack where available, preserving Zen's transforms and inline styles. Reduced motion, scrolling or workspace changes, existing conflicting translation, teardown, and another run cancel or skip the optional effect. Placement correctness is independent of animation support.
 
-`tab-history.mjs` records one native layout receipt per completed operation. It restores membership, order, group appearance, and collapse state during the browser session. Undo checks the current layout before restoring and rejects a conflicting manual edit. It is not persisted as a cross-restart history.
+`tab-history.mjs` records one native layout receipt per completed operation. The primary baseline is captured immediately before native apply, so new tabs and manual edits made during planning are preserved by Undo. It restores membership, order, group appearance, and collapse state during the browser session. Undo checks the current layout before restoring and rejects a conflicting manual edit; title-only updates are excluded from that comparison. Strict plan validation remains separate. The receipt is not persisted as a cross-restart history.
 
 ## Advanced compatibility path
 
@@ -109,4 +113,4 @@ The extracted host-theme tokens and component states are documented in [DESIGN.m
 
 ## Verification
 
-Use `npm run check` for manifest/preference/privacy validation and regression tests. [Real Zen checks](e2e-zen.md) exercise Sine-loaded native behavior in disposable profiles. [The 2.0.0 overhaul record](overhaul-verification.md) preserves the earlier fixture/import/transfer measurements. [The Tidy follow-up](tidy-verification.md) records native sidebar/motion behavior, one-request grouping, and the bounded configured-model output-budget probe. [The 2.0.3 recovery record](output-recovery-verification.md) covers forced output limits and the configured-model replay. These checks do not establish long-session RSS or general model quality.
+Use `npm run check` for manifest/preference/privacy validation and regression tests. [Real Zen checks](e2e-zen.md) exercise Sine-loaded native behavior in disposable profiles. [The 2.0.0 overhaul record](overhaul-verification.md) preserves the earlier fixture/import/transfer measurements. [The Tidy follow-up](tidy-verification.md) records native sidebar/motion behavior, one-request grouping, and the bounded configured-model output-budget probe. [The 2.0.3 recovery record](output-recovery-verification.md) covers forced output limits and the configured-model replay. [The 2.0.5 browsing record](live-sort-verification.md) separates primary snapshot/Decision evidence from the retained Advanced behavior. These checks do not establish long-session RSS or general model quality.

@@ -45,7 +45,7 @@ for (const scenario of ["review-cancel", "review-apply"]) {
   });
 }
 
-for (const scenario of ["skip-changed", "provider-changed", "consent-revoked", "tabs-changed", "stop-during-provider", "stop-before-provider"]) {
+for (const scenario of ["skip-changed", "provider-changed", "consent-revoked", "stop-during-provider", "stop-before-provider"]) {
   test(`primary ${scenario} leaves the layout untouched`, () => {
     const result = run(scenario);
     assert.equal(result.apply, 0);
@@ -87,10 +87,14 @@ for (const scenario of ["jev-unready", "jev-category-unready"]) {
 }
 
 for (const scenario of ["jev-ready", "jev-review"]) {
-  test(`main ${scenario} always discovers categories and obeys only the new review preference`, () => {
+  test(`main ${scenario} buffers Decision assignments for common review, reconciliation and native apply`, () => {
     const result = run(scenario);
-    assert.deepEqual(result.jevOptions, { source: "suggest", review: scenario === "jev-review", persistCategories: false });
-    assert.deepEqual(result.imports, ["./jev-sort.mjs"]);
+    assert.equal(result.decisionPlanned, true);
+    assert.equal(result.plannerCalls, 1);
+    assert.equal(result.apply, 1);
+    assert.equal(result.records, 1);
+    assert.equal(result.modalCalls, scenario === "jev-review" ? 1 : 0);
+    assert.deepEqual(result.imports, ["./ai-decision-plan.mjs", ...(scenario === "jev-review" ? ["./preview-modal.mjs"] : [])]);
     assert.equal(result.advancedPreserved, true);
     assert.equal(result.ruleLoads, 0);
   });
@@ -113,4 +117,59 @@ test("a failed provider exposes useful recovery without mutating any tabs", () =
   assert.match(result.finishes.at(-1).message, /access was rejected.*key/i);
   assert.doesNotMatch(result.finishes.at(-1).message, /layout is unchanged.*connection/i);
   assert.equal(result.observersLeft, 0); assert.equal(result.activeSignal, false);
+});
+
+
+test("a background title update does not discard the completed primary AI plan", () => {
+  const result = run("tabs-changed");
+  assert.equal(result.plannerCalls, 1);
+  assert.equal(result.requests, 1);
+  assert.equal(result.apply, 1);
+  assert.equal(result.records, 1);
+  assert.equal(result.observersLeft, 0);
+  assert.doesNotMatch(result.finishes.at(-1).message, /Run it again|settings changed/);
+});
+
+
+for (const scenario of ["unused-provider-changed", "warmup-changed", "legacy-rules-changed"]) {
+  test(`primary ${scenario} does not invalidate the active AI request`, () => {
+    const result = run(scenario);
+    assert.equal(result.apply, 1);
+    assert.equal(result.plannerCalls, 1);
+    assert.equal(result.requests, 1);
+    assert.equal(result.observersLeft, 0);
+    if (scenario === "legacy-rules-changed") assert.match(result.recordedRulesBefore, /Manual edit during sorting/);
+  });
+}
+
+test("a genuine settings change has a short recovery label and an explicit retry action", () => {
+  const result = run("provider-changed");
+  assert.equal(result.apply, 0);
+  assert.equal(result.retryAvailable, true);
+  assert.equal(result.finishes.at(-1).label, "New setup");
+  assert.match(result.finishes.at(-1).message, /Retry with the current setup/);
+});
+
+test("consent revocation stops immediately and offers Setup rather than an automatic new request", () => {
+  const result = run("consent-revoked");
+  assert.equal(result.apply, 0);
+  assert.equal(result.requests, 1);
+  assert.equal(result.setupAvailable, true);
+  assert.equal(result.finishes.at(-1).label, "Sharing off");
+});
+
+test("switching workspace stops safely with a specific short explanation", () => {
+  const result = run("workspace-changed");
+  assert.equal(result.apply, 0);
+  assert.equal(result.records, 0);
+  assert.equal(result.retryAvailable, true);
+  assert.equal(result.finishes.at(-1).label, "New space");
+});
+
+test("a navigated snapshot tab is left in place without applying a stale assignment", () => {
+  const result = run("navigated");
+  assert.equal(result.plannerCalls, 1);
+  assert.equal(result.apply, 0);
+  assert.equal(result.retryAvailable, true);
+  assert.equal(result.finishes.at(-1).label, "Tabs changed");
 });

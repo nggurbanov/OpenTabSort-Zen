@@ -48,7 +48,7 @@ Local batch-size controls remain available for large embedding runs. Ollama's **
 
 ## Decision models
 
-The main wand always asks the configured suggestion AI to create fresh categories for the current workspace. These categories are transient: it does not replace the saved category list.
+The main wand always asks the configured suggestion AI to create fresh categories for the initial workspace snapshot. These categories are transient: it does not replace the saved category list. Primary Decision assignments are buffered until classification and optional plan review finish, then use the shared reconciliation/apply/Undo path. Stop before apply moves nothing.
 
 Advanced keeps manual categories, saved per-workspace meanings, reuse/refresh controls, preview editing, confidence thresholds, and detailed request options. This is where an existing category workflow can still be run.
 
@@ -58,7 +58,7 @@ The endpoint must accept the integration's `model`, `state`, and `questions` sch
 
 Classification uses up to 30 tab questions per request and shrinks batches to fit its request budget. Unknown, low-confidence, invalid, and missing decisions retain current membership. The confidence floor defaults to 0.5.
 
-Completed batches apply live. **Stop** cancels further work and keeps completed moves. Provider failures leave unprocessed tabs untouched. **Undo sort** restores the previous native layout during the current session and rejects conflicting later edits.
+In **Run advanced sorting**, completed batches apply live. **Stop** cancels further work and keeps completed moves. Provider failures leave unprocessed tabs untouched. **Undo sort** restores the previous native layout during the current session and rejects conflicting later edits.
 
 ## Appearance and group tools
 

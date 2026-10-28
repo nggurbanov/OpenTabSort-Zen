@@ -9,10 +9,12 @@ import { CONFIG } from "./modules/config.mjs";
 import { captureTabSnapshot, isTabSnapshotCurrent, validateAIPlan, reserveNewGroupNames } from "./modules/sort-plan.mjs";
 import { sortFailureNotice } from "./modules/sort-failure.mjs";
 import { safeProviderErrorMessage } from "./modules/safe-log.mjs";
+import { createSnapshotReconciler } from "./modules/sort-reconciliation.mjs";
 const scenario = process.argv[2], primary = process.argv[3] === "primary";
 const behavior = scenario.replace(/^primary-/, "");
 const state = { requests: 0, requestsAfterAbort: 0, apply: 0, mutations: 0, records: 0, imports: [], finishes: [], modalCalls: 0, errors: [], setupCalls: 0, ruleLoads: 0, plannerCalls: 0, pass1Calls: 0, legacyCalls: 0, toasts: [] };
 const observers = new Set(), prefs = new Map([[CONFIG.RULES_PREF, JSON.stringify([{name:"Reading",domains:["reading.test"]}])], [CONFIG.AI_ENGINE_PREF, scenario === "rules-only" || scenario === "primary-off" ? "off" : scenario.startsWith("primary-jev-") ? "jev" : scenario === "primary-local" ? "local" : "openai"]]);
+prefs.set(CONFIG.AI_PROVIDER_CONSENT_PREF,true);
 prefs.set(CONFIG.AI_REVIEW_PREF, behavior.includes("review"));
 prefs.set(CONFIG.AI_SORT_MODE_PREF,"rules-first");
 prefs.set(CONFIG.AI_NEW_GROUP_BEHAVIOR_PREF,"identify-only");
@@ -49,6 +51,11 @@ const runProvider = async () => {
   if(behavior==="provider-changed")notify(CONFIG.AI_OPENAI_MODEL_PREF,"different-model");
   if(behavior==="consent-revoked")notify(CONFIG.AI_PROVIDER_CONSENT_PREF,false);
   if(behavior==="tabs-changed")info.title="User changed the title";
+  if(behavior==="unused-provider-changed")notify(CONFIG.AI_GEMINI_MODEL_PREF,"unused-model");
+  if(behavior==="warmup-changed")notify(CONFIG.AI_OLLAMA_WARMUP_PREF,true);
+  if(behavior==="legacy-rules-changed")notify(CONFIG.RULES_PREF,JSON.stringify([{name:"Manual edit during sorting",domains:[]} ]));
+  if(behavior==="workspace-changed")win.gZenWorkspaces.activeWorkspace="w2";
+  if(behavior==="navigated")info.url="https://private.test/new-page";
   if(behavior==="stop-during-provider")controls.onStop();
   if (behavior==="provider-failure") return {assignedToExisting:[],newGroups:[],skipped:[],unresolved:[info],failed:"HTTP 401"};
   return plan();
@@ -65,19 +72,21 @@ const dependencies = {
   "./sorting-mode.mjs":{resolveEffectiveSortingMode:()=>"rules-first",isFullAIMode:()=>false},
   "./ui-toast.mjs":{showToast:(message)=>state.toasts.push(message)},
   "./sort-plan.mjs":{captureTabSnapshot,isTabSnapshotCurrent,validateAIPlan,reserveNewGroupNames},
-  "./operation-ui.mjs":{showSortProgress:(callbacks)=>{controls=callbacks;return {stage:noop,setupAvailable:noop,finish:(message,canUndo)=>state.finishes.push({message,canUndo})};}},
-  "./tab-history.mjs":{captureLayout:()=>[{ref:tab,group:null,position:0}],recordSortUndo:()=>{state.records++;return true;},undoLastSort:noop,clearSortUndo:noop,canUndoLastSort:()=>false},
+  "./sort-reconciliation.mjs":{createSnapshotReconciler},
+  "./operation-ui.mjs":{showSortProgress:(callbacks)=>{controls=callbacks;return {stage:noop,setupAvailable:()=>state.setupAvailable=true,retryAvailable:()=>state.retryAvailable=true,finish:(message,canUndo,options)=>state.finishes.push({message,canUndo,label:options?.label})};}},
+  "./tab-history.mjs":{captureLayout:()=>[{ref:tab,group:null,position:0}],recordSortUndo:(_layout,options)=>{state.records++;state.recordedRulesBefore=options?.rulesBefore;return true;},undoLastSort:noop,clearSortUndo:noop,canUndoLastSort:()=>false},
   "./remote-provider.mjs":{runPass2Remote:runProvider,runPass2RemoteFresh:runProvider,classifyExistingGroupsRemoteBatch:async()=>new Map()},
   "./preview-modal.mjs":{showPreviewModal:async({signal,plan})=>{
     state.modalCalls++;
     if (behavior==="review-cancel") return null;
-    if (behavior==="review-apply") return plan;
+    if (behavior==="review-apply" || behavior==="jev-review") return plan;
     controls.onStop();signal.throwIfAborted();return null;
   }},
   "./setup-navigation.mjs":{openAISetup:()=>state.setupCalls++},
   "./sort-failure.mjs":{sortFailureNotice},
   "./safe-log.mjs":{safeProviderErrorMessage},
   "./jev-categories.mjs":{readJevSettings:()=>({consent:true,endpoint:"https://decision.test",apiKey:"test",model:"test",categoryProvider:"openai"})},
+  "./ai-decision-plan.mjs":{planDecisionWorkspace:async(tabs,options)=>{state.plannerCalls++;state.plannedCount=tabs.length;state.decisionPlanned=true;return runProvider();}},
   "./ai-workspace-plan.mjs":{planAIWorkspace:async(tabs,options)=>{state.plannerCalls++;state.plannedCount=tabs.length;state.plannerOptions={engine:options.engine};return runProvider();}},
   "./ai.mjs":{runPass2Fresh:async(tabs,rules)=>{state.localRules=rules;state.plannerCalls++;return runProvider();}},
   "./jev-sort.mjs":{runJevSort:async(options)=>{state.jevOptions={source:options.sourceOverride,review:options.previewOverride,persistCategories:options.persistCategories};}},

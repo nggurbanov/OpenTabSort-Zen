@@ -169,19 +169,78 @@ try {
   assert.equal(accepted.error, undefined); assert.ok(accepted.requests > 0); assert.equal(accepted.categories[0].name, "WORK revised");
   assert.equal(accepted.hasPreview, false);
   console.log("preview acceptance: edited category saved and applied");
-  const primary = await client.executeAsync(`
+  // The primary action buffers every Decision batch, then uses the common
+  // plan review, synchronous native apply and one Undo receipt. The legacy
+  // category editor/progressive sort checks above deliberately stay unchanged.
+  const runPrimary = async ({ mode = "normal", review = false, accept = true } = {}) => client.executeAsync(`
     const done = arguments[arguments.length - 1]; const win = Services.wm.getMostRecentWindow("navigator:browser");
-    Services.prefs.setBoolPref("extensions.zen-auto-organize.ai-review-before-apply", false);
+    Services.prefs.setBoolPref("extensions.zen-auto-organize.ai-review-before-apply", ${review});
+    win.__jevMode = "primary"; win.__jevRequests = 0;
     const before = win.__jevState();
     const saved = Services.prefs.getStringPref("extensions.zen-auto-organize.ai-jev-categories-json", "{}");
+    const previousFetch = win.fetch;
+    let sawPreview = false, requestsAtPreview = 0, stateAtPreview = null, titleChanged = false;
+    win.fetch = async (url, init) => {
+      if (String(url) !== "http://127.0.0.1:${port}/v1/systemone") return win.__jevNativeFetch(url, init);
+      win.__jevRequests++;
+      if (${JSON.stringify(mode)} === "stop" && win.__jevRequests === 2) {
+        win.document.querySelector('.zao-sort-progress [data-action="stop"]')?.click();
+      }
+      if (${JSON.stringify(mode)} === "auth" && win.__jevRequests === 2) return new win.Response("Unauthorized", { status: 401 });
+      if (${JSON.stringify(mode)} === "title" && win.__jevRequests === 2) {
+        const tab = [...win.gBrowser.tabs].find((tab) => !tab.pinned && tab.linkedBrowser?.currentURI?.spec.includes(".localhost"));
+        tab.setAttribute("label", tab.getAttribute("label") + " background title update"); titleChanged = true;
+      }
+      return win.__jevNativeFetch(url, init);
+    };
+    const observer = new win.MutationObserver(() => {
+      const modal = win.document.querySelector(".zao-preview-dialog[open]");
+      if (!modal) return;
+      observer.disconnect(); sawPreview = true; requestsAtPreview = win.__jevRequests; stateAtPreview = win.__jevState();
+      modal.querySelector(${JSON.stringify(accept ? ".zao-preview-btn-apply" : ".zao-preview-btn-cancel")}).click();
+    });
+    observer.observe(win.document.documentElement, { subtree: true, childList: true, attributes: true });
     win.OpenTabSortZen.handleOrganizeClick().then(() => {
+      observer.disconnect(); win.fetch = previousFetch;
       const afterSaved = Services.prefs.getStringPref("extensions.zen-auto-organize.ai-jev-categories-json", "{}");
-      [...win.document.querySelectorAll(".zao-sort-progress button")].find((node) => node.dataset.action === "undo" && !node.hidden)?.click();
-      done({ preserved: saved === afterSaved, before, restored: win.__jevState() });
-    }).catch((error) => done({ error: String(error) }));
+      const after = win.__jevState();
+      const undo = win.document.querySelector('.zao-sort-progress [data-action="undo"]:not([hidden])');
+      const hasUndo = Boolean(undo);
+      const status = win.document.querySelector(".zao-sort-progress [role=status]")?.textContent;
+      undo?.click();
+      done({ preserved: saved === afterSaved, before, after, restored: win.__jevState(), requests: win.__jevRequests,
+        status, hasUndo, sawPreview, requestsAtPreview, stateAtPreview, titleChanged,
+        hasPreview: !!win.document.querySelector(".zao-preview-dialog, .zao-jev-preview"),
+        nested: !!win.document.querySelector("tab-group tab-group") });
+    }).catch((error) => { observer.disconnect(); win.fetch = previousFetch; done({ error: String(error) }); });
   `);
-  assert.equal(primary.error, undefined); assert.equal(primary.preserved, true); assert.deepEqual(primary.restored, primary.before);
-  console.log("primary decision sort: fresh suggestions leave saved advanced categories unchanged; Undo restores prior layout");
+  for (const mode of ["normal", "title"]) {
+    const primary = await runPrimary({ mode });
+    assert.equal(primary.error, undefined); assert.equal(primary.preserved, true); assert.equal(primary.hasPreview, false);
+    assert.equal(primary.requests, 10); assert.equal(primary.sawPreview, false); assert.equal(primary.hasUndo, true);
+    assert.equal(primary.nested, false); assert.deepEqual(primary.restored, primary.before);
+    const organized = primary.after.filter((tab) => tab.url.includes(".localhost"));
+    assert.equal(organized.length, 300);
+    assert.ok(organized.every((tab) => tab.group === GOLD_FAMILIES.find((family) => tab.url.includes(`${family.toLowerCase()}.localhost`))));
+    if (mode === "title") assert.equal(primary.titleChanged, true);
+    console.log(`primary Decision ${mode}: all batches buffered; common apply/Undo restores prior layout; saved categories preserved`);
+  }
+  for (const mode of ["stop", "auth"]) {
+    const primary = await runPrimary({ mode });
+    assert.equal(primary.error, undefined); assert.equal(primary.preserved, true); assert.equal(primary.requests, 2);
+    assert.equal(primary.hasUndo, false); assert.deepEqual(primary.after, primary.before);
+    assert.match(primary.status, mode === "stop" ? /stopped/i : /key|access/i);
+    console.log(`primary Decision ${mode}: buffered assignments discarded, no native moves`);
+  }
+  for (const accept of [false, true]) {
+    const primary = await runPrimary({ review: true, accept });
+    assert.equal(primary.error, undefined); assert.equal(primary.preserved, true); assert.equal(primary.hasPreview, false);
+    assert.equal(primary.sawPreview, true); assert.equal(primary.requestsAtPreview, 10);
+    assert.deepEqual(primary.stateAtPreview, primary.before);
+    assert.equal(primary.hasUndo, accept); assert.deepEqual(primary.restored, primary.before);
+    if (!accept) assert.deepEqual(primary.after, primary.before);
+    console.log(`primary Decision review ${accept ? "apply" : "cancel"}: common plan modal after complete planning, no pre-review moves`);
+  }
   if (process.env.JEV_QA_SETTINGS === "1") {
     await client.command("Marionette:SetContext", { value: "content" });
     const handles = await client.command("WebDriver:GetWindowHandles", {});

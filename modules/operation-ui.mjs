@@ -151,23 +151,40 @@ export const showNotice = (message) => {
   addClose(row); row.autoDismiss(true);
   return { remove: row.remove };
 };
-export const showSortProgress = ({ onStop, onUndo, onDismiss, onSetup, stage = "Preparing tabs…", className = "" } = {}) => {
+export const showSortProgress = ({ onStop, onUndo, onDismiss, onSetup, onRetry, stage = "Preparing tabs…", className = "" } = {}) => {
+  const restoreFocus = Boolean(document.activeElement?.closest?.(".zao-operation"));
   const row = createRow(`zao-sort-progress ${className}`, "Tab sorting", stage);
   progressRows.set(row.root, { ...row, preserveUndo: Boolean(onUndo) });
-  let finished = false, undoAvailable = false, setupAvailable = false;
+  let finished = false, undoAvailable = false, setupAvailable = false, retryAvailable = false, retryStarted = false;
   const stop = row.button("Stop", () => { stop.disabled = true; row.setMessage("Stopping…"); onStop?.(); });
   stop.setAttribute("data-action", "stop");
   const undo = row.button("Undo", () => onUndo?.()); undo.hidden = true;
   undo.setAttribute("aria-label", "Undo sort"); undo.setAttribute("data-action", "undo");
   const setup = row.button("Setup", () => onSetup?.()); setup.hidden = true;
   setup.setAttribute("aria-label", "AI setup"); setup.setAttribute("data-action", "setup");
+  const retry = row.button("Retry", () => {
+    if (!finished || !retryAvailable || retryStarted || retry.hidden || !row.root.isConnected) return;
+    retryStarted = true; retry.disabled = true;
+    const failed = () => {
+      if (!row.root.isConnected) return;
+      retryStarted = false; retry.disabled = false;
+    };
+    try { Promise.resolve(onRetry?.()).catch(failed); } catch { failed(); }
+  }); retry.hidden = true;
+  retry.setAttribute("aria-label", "Retry sort"); retry.setAttribute("data-action", "retry");
   const close = addClose(row, onDismiss); close.hidden = true;
   const actions = () => {
+    const focused = document.activeElement;
     stop.hidden = finished; close.hidden = !finished;
     // Keep a previous valid Undo reachable, even if a follow-up failed.
     undo.hidden = !finished || !undoAvailable || !onUndo;
     setup.hidden = !finished || undoAvailable || !setupAvailable || !onSetup;
+    retry.hidden = !finished || undoAvailable || setupAvailable || !retryAvailable || !onRetry;
+    if ([stop, undo, setup, retry].includes(focused) && focused.hidden) {
+      [undo, setup, retry, close].find((node) => !node.hidden)?.focus?.();
+    }
   };
+  if (restoreFocus) stop.focus?.();
   row.listen(row.root, "keydown", (event) => { if (finished && event.key === "Escape") { event.preventDefault(); row.dismiss(onDismiss); } });
   return {
     stage(message) { row.setMessage(message); },
@@ -175,12 +192,17 @@ export const showSortProgress = ({ onStop, onUndo, onDismiss, onSetup, stage = "
     finish(message, canUndo = false, { label = message } = {}) {
       finished = true; undoAvailable = canUndo;
       row.setMessage(message, label); row.indicator.setAttribute("hidden", "");
-      row.root.setAttribute("data-state", setupAvailable ? "error" : "finished");
-      actions(); row.autoDismiss(!setupAvailable);
+      row.root.setAttribute("data-state", setupAvailable || retryAvailable ? "error" : "finished");
+      actions(); row.autoDismiss(!setupAvailable && !retryAvailable);
     },
     setUndoAvailable(value) { undoAvailable = value; actions(); },
     setupAvailable() {
       setupAvailable = true;
+      if (finished) row.root.setAttribute("data-state", "error");
+      actions(); row.autoDismiss(false);
+    },
+    retryAvailable() {
+      retryAvailable = true;
       if (finished) row.root.setAttribute("data-state", "error");
       actions(); row.autoDismiss(false);
     },

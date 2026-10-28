@@ -2,10 +2,19 @@
 import { CONFIG, LOG } from "./config.mjs";
 import { getEligibleTabs } from "./tabs.mjs";
 import { findSafeInsertAnchor, expandIfCollapsed, collapseGroup } from "./groups.mjs";
-import { captureTabSnapshot, isTabSnapshotCurrent } from "./sort-plan.mjs";
+import { captureTabSnapshot } from "./sort-plan.mjs";
 import { showToast } from "./ui-toast.mjs";
 import { getActiveSortSignal } from "./sort-session.mjs";
 import { cancelTidyMotion } from "./tidy-motion.mjs";
+// Undo restores layout, never page metadata. Background titles/favicon updates
+// must not invalidate a receipt; navigation, identity, order and groups still do.
+const isUndoSnapshotCurrent = (snapshot, tabs) => {
+  const current = captureTabSnapshot(tabs);
+  return snapshot.length === current.length && snapshot.every((saved, index) => {
+    const live = current[index];
+    return saved.ref?.isConnected && ["ref", "url", "group", "label"].every((field) => saved[field] === live[field]);
+  });
+};
 const receipts = new WeakMap();
 export const clearSortUndo = () => receipts.delete(window);
 export const recordSortUndo = (original, { rulesBefore, rulesAfter, expectedLayout, workspaceId = window.gZenWorkspaces.activeWorkspace } = {}) => {
@@ -38,7 +47,7 @@ export const canUndoLastSort = () => {
   if (!receipt || window.gZenWorkspaces?.activeWorkspace !== receipt.workspaceId) return false;
   if (receipt.rulesAfter !== undefined && Services.prefs.getStringPref(CONFIG.RULES_PREF, "") !== receipt.rulesAfter) return false;
   const tabs = getEligibleTabs().tabs;
-  if (!isTabSnapshotCurrent(receipt.expected, tabs)) return false;
+  if (!isUndoSnapshotCurrent(receipt.expected, tabs)) return false;
   const current = captureLayout();
   return receipt.expected.every((entry, index) => entry.position === current[index]?.position &&
     JSON.stringify(entry.appearance) === JSON.stringify(current[index]?.appearance));
@@ -54,7 +63,7 @@ export const undoLastSort = () => {
   // Refuse a stale undo rather than overwriting a later manual regroup/reorder.
   // The receipt remains available if the user switches back without editing.
   const current = captureLayout();
-  if (!isTabSnapshotCurrent(expected, getEligibleTabs().tabs) || expected.some((entry, index) =>
+  if (!isUndoSnapshotCurrent(expected, getEligibleTabs().tabs) || expected.some((entry, index) =>
     entry.position !== current[index]?.position || JSON.stringify(entry.appearance) !== JSON.stringify(current[index]?.appearance))) {
     showToast("The tab layout changed after sorting; undo would overwrite those changes."); return;
   }

@@ -4,7 +4,7 @@ Hundreds of tabs, one button. OpenTabSort uses AI to organize the active [Zen Br
 
 Set up an AI connection once, then click the wand. AI works out the groups from your tabs. A quiet sidebar row shows progress and **Stop**; **Undo** appears when sorting finishes.
 
-Development version: **2.0.4, planned / unreleased**. Based on the MIT-licensed [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand).
+Development version: **2.0.5, planned / unreleased**. Based on the MIT-licensed [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand).
 
 ## Install
 
@@ -31,17 +31,19 @@ Pinned and essential tabs, tabs in other workspaces, and excluded domains stay i
 | **Custom endpoint** | Endpoint, model, optional API key, and consent. Existing protocol options remain in Advanced. |
 | **Decision models** | Decision endpoint, model, key, consent, and an AI connection for automatically creating groups. |
 
-Chat providers and Ollama group a normal workspace of up to 300 tabs in one compact request, with a 72 KiB prompt limit. An explicitly cut-short answer automatically recovers with a shared taxonomy and smaller classification batches. Recovery has request/time limits and applies nothing if a later request fails. Larger inventories use a shared taxonomy and bounded classification batches. Decision models create fresh categories before live classification. Built-in local AI uses embedding-based clustering; its grouping and naming differ from a chat model.
+Chat providers and Ollama group a normal workspace of up to 300 tabs in one compact request, with a 72 KiB prompt limit. An explicitly cut-short answer automatically recovers with a shared taxonomy and smaller classification batches. Recovery has request/time limits and applies nothing if a later request fails. Larger inventories use a shared taxonomy and bounded classification batches. Decision models create fresh categories and buffer every classification batch before applying the completed plan. Built-in local AI uses embedding-based clustering; its grouping and naming differ from a chat model.
 
 For Ollama, install it from [ollama.com](https://ollama.com), run `ollama pull qwen2.5:1.5b`, then select Ollama in AI setup. Model loading happens on demand; startup warming is off by default.
 
 ## Stop, review, and undo
 
-**Stop** interrupts AI work. Chat, Ollama, and built-in local sorting plan before moving tabs, so stopping during planning leaves the layout unchanged. Decision sorting applies batches live; Stop keeps completed batches.
+**Stop** interrupts AI work. Every engine on the everyday wand plans before moving tabs, including Decision models, so stopping during planning leaves the layout unchanged. Advanced Decision sorting retains its progressive batch behavior.
 
-**Undo** restores the preceding layout during the current browser session, including native group membership, order, appearance, and collapsed state. Successful feedback disappears after five seconds, pausing while hovered or focused; dismissing it retains the valid session Undo receipt. It refuses to overwrite later layout edits. Failed or unresolved classifications keep their previous membership.
+**Undo** restores the layout immediately before the groups were applied, including native membership, order, appearance, and collapsed state. Tabs and manual edits made while AI was working remain part of that baseline. Later background title updates do not invalidate Undo; conflicting later layout edits do. Successful feedback disappears after five seconds, pausing while hovered or focused; dismissing it retains the valid session Undo receipt. Failed or unresolved classifications keep their previous membership.
 
-Changes to the workspace, eligible tabs, or relevant settings invalidate work in progress. The compact row sits beneath the wand in the native sidebar and offers **Setup** when a connection needs attention. Short status text keeps the row quiet; the full message remains in its tooltip and accessible label. Visible tabs settle into place with a brief animation that respects reduced motion and adds no artificial waiting.
+Keep browsing while AI works on the initial tab snapshot. Background title updates and opened or closed tabs do not cancel the whole sort. New tabs stay outside that operation; navigated, pinned, manually moved or regrouped tabs and renamed groups are protected when the plan is applied.
+
+Switching workspaces or changing the selected AI setup stops pending work and offers **Retry**. Revoking metadata consent offers **Setup**. The compact row stays in the stable native sidebar toolbar with short status text and a full accessible message. Visible tabs settle into place with a brief animation that respects reduced motion and adds no artificial waiting.
 
 ## Privacy
 
@@ -56,6 +58,7 @@ Built-in local AI and advanced sorting may fetch small page snippets using brows
 - [Advanced tools and saved data](docs/advanced.md)
 - [Architecture](docs/architecture.md)
 - [Development and real Zen checks](docs/e2e-zen.md)
+- [Browsing during sorting and Decision verification](docs/live-sort-verification.md)
 - [Tidy interaction and configured-model verification](docs/tidy-verification.md)
 - [2.0.0 overhaul verification and measurement limits](docs/overhaul-verification.md)
 - [Changelog](CHANGELOG.md)

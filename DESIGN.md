@@ -120,19 +120,19 @@ The Sine settings dialog is bounded by `min(720px, calc(100vw - 32px))`, with th
 
 The Advanced disclosure has a top divider and (28px) separation. Its retained preference rows stack into one column; the older rule grid reflows at (700px), placing domain chips below the rule name. The existing smaller action-row breakpoint is (520px).
 
-The operation row lives in the stable sidebar toolbar, directly before the tab-area titlebar and outside tab scrolling. It is (32px) high, with (2px 4px) padding and (4px) gaps; width follows the available sidebar. Status stays on one line with ellipsis, and contextual controls remain visible. The full text is available through the status tooltip and accessible label. If no sidebar anchor is available, a fallback overlay is bounded to `min(300px, calc(100vw - 16px))` near the wand.
+The operation row lives in the stable sidebar toolbar, directly before the tab-area titlebar and outside tab scrolling. It is (32px) high, with (2px 4px) padding and (4px) gaps; width follows the available sidebar. Status stays on one line with ellipsis, and contextual controls remain visible. Use a short meaningful visible label that fits the sidebar; the full recovery message remains accessible. If no sidebar anchor is available, a fallback overlay is bounded to `min(300px, calc(100vw - 16px))` near the wand.
 
 The final native UI receipt reports no horizontal overflow in the primary form at a (446 × 984px) viewport. This is a verified fixture size, not a supported-device matrix.
 
 ## Elevation & Depth
 
-The setup form stays flat within Sine's own dialog surface. Borders separate fields and Advanced; there are no decorative section cards in the primary form. The sidebar row has no border, filled surface, or shadow. Only the fallback overlay has a small shadow (`0 2px 8px rgb(0 0 0 / 15%)`). The chat/local review dialog uses the existing modal shadow (`0 14px 48px rgba(0, 0, 0, 0.35)`) and dark backdrop (`rgba(0, 0, 0, 0.45)`). Decision category review uses a native dialog and its own existing backdrop.
+The setup form stays flat within Sine's own dialog surface. Borders separate fields and Advanced; there are no decorative section cards in the primary form. The sidebar row has no border, filled surface, or shadow. Only the fallback overlay has a small shadow (`0 2px 8px rgb(0 0 0 / 15%)`). The primary plan review dialog uses the existing modal shadow (`0 14px 48px rgba(0, 0, 0, 0.35)`) and dark backdrop (`rgba(0, 0, 0, 0.45)`) for all engines, including Decision. Advanced Decision category review uses a native dialog and its own existing backdrop.
 
 **The Purposeful Lift Rule.** Keep the sidebar row and setup form flat. Reserve the small shadow for fallback overlays and the larger existing shadow for modal review.
 
 ## Shapes
 
-Fields and the operation row use softly rounded (6px) control corners; row actions use (4px) corners. Chat/local review and Decision review retain their distinct existing dialog radii. Saved domain/title chips remain pills and are confined to the editors and review surfaces that use them. Containers and controls use thin (1px) adaptive borders rather than decorative outlines.
+Fields and the operation row use softly rounded (6px) control corners; row actions use (4px) corners. Primary plan review and Advanced Decision category review retain their distinct existing dialog radii. Saved domain/title chips remain pills and are confined to the editors and review surfaces that use them. Containers and controls use thin (1px) adaptive borders rather than decorative outlines.
 
 ## Components
 
@@ -148,9 +148,9 @@ A native `details/summary` control supplies keyboard interaction and open/closed
 
 ### Sidebar feedback and contextual actions
 
-The row contains a polite live status paragraph, a small busy indicator, and real HTML buttons. Stop appears while work runs; activating it disables the control and reports “Stopping…”. Completion replaces Stop with a valid Undo or the relevant Setup recovery action, plus an icon close button. Error labels are short (`AI offline`, `AI reply cut short`); complete recovery messages remain in the tooltip and accessible label. A successful primary run can say `300 tabs tidy`.
+The row contains a polite live status paragraph, a small busy indicator, and real HTML buttons. Stop appears while work runs; activating it disables the control and reports “Stopping…”. Completion replaces Stop with a valid Undo or the relevant Retry/Setup recovery action, plus an icon close button. Labels identify the outcome concisely (`New setup`, `New space`, `Stopped`); complete recovery messages remain accessible. A changed connection or workspace offers Retry, and revoked sharing consent offers Setup. A successful primary run can say `300 tabs tidy`.
 
-Success feedback dismisses after five seconds, pausing during hover or keyboard focus. Dismissal removes only feedback, preserving a valid session Undo receipt. Setup errors stay until dismissed. Escape dismisses completed feedback; it does not conceal an active Stop control.
+Success feedback dismisses after five seconds, pausing during hover or keyboard focus. Dismissal removes only feedback, preserving a valid session Undo receipt. Recovery states offering Retry or Setup stay until dismissed. Escape dismisses completed feedback; it does not conceal an active Stop control.
 
 Buttons inherit the host font and foreground, with transparent backgrounds, (24px) minimum height, and (2px) padding. Subtle foreground mixes indicate hover and press. A (2px) host-accent outline with (1px) offset marks keyboard focus; disabled Stop reduces opacity. The icon close button is (24px) square and has an explicit accessible name. These compact controls use HTML button keyboard semantics with browser-chrome styling.
 
@@ -162,7 +162,11 @@ Advanced chips use the monospace token, an adaptive border, and a small kind bad
 
 ### Review dialogs
 
-The existing native chat/local preview is bounded to the documented width and (80vh) height, with scrollable content inside the modal. Apply and Cancel govern whether a plan is committed; Escape cancels and focus returns to the prior control. Decision category review retains its editable names, descriptions, merge controls, and explicit sorting/cancel actions.
+Every primary engine uses the native plan preview, bounded to the documented width and (80vh) height, with scrollable content inside the modal. The Decision engine finishes all classification batches before opening this preview. Apply and Cancel govern whether a plan is committed; Escape cancels and focus returns to the prior control. Advanced Decision category review retains its editable names, descriptions, merge controls, and explicit sorting/cancel actions.
+
+### Browsing while planning
+
+The busy state does not freeze the tab list. Background title updates and added or closed tabs do not turn into an error for the entire sort. The completed plan is reconciled with current native tabs: new tabs remain outside the operation, and navigated, pinned, manually moved or regrouped tabs and renamed groups are protected. Undo restores the state immediately before apply, preserving activity during planning; a later title update alone does not disable it. A workspace or selected AI setup change still stops the pending operation with its own concise recovery label.
 
 ### Motion
 

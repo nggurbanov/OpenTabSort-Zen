@@ -13,7 +13,7 @@
 export const LOG = "[OpenTabSort]";
 
 // +tag.N suffix (dev builds only) flags a stale module-cache load in the Browser Console.
-export const BUILD_VERSION = "2.0.4";
+export const BUILD_VERSION = "2.0.5";
 
 export const CONFIG = {
   MAX_INIT_CHECKS: 50,

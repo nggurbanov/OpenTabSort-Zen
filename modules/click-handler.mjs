@@ -6,8 +6,8 @@ import { getEligibleTabs } from "./tabs.mjs";
 import { matchesDomain } from "./pass1.mjs";
 import { applyPass2 } from "./apply-plan.mjs";
 import { dissolveEmptyGroups } from "./groups.mjs";
-import { captureTabSnapshot, isTabSnapshotCurrent, validateAIPlan } from "./sort-plan.mjs";
-import { beginSortSession, captureSortSettings } from "./sort-session.mjs";
+import { captureTabSnapshot, validateAIPlan } from "./sort-plan.mjs";
+import { beginSortSession, captureSortSettings, primarySortPrefNames } from "./sort-session.mjs";
 import { captureLayout, recordSortUndo, undoLastSort, clearSortUndo, canUndoLastSort } from "./tab-history.mjs";
 import { readProviderSettings } from "./provider-settings.mjs";
 import { readJevSettings } from "./jev-categories.mjs";
@@ -17,6 +17,7 @@ import { showToast } from "./ui-toast.mjs";
 import { openAISetup } from "./setup-navigation.mjs";
 import { sortFailureNotice } from "./sort-failure.mjs";
 import { safeProviderErrorMessage } from "./safe-log.mjs";
+import { createSnapshotReconciler } from "./sort-reconciliation.mjs";
 
 console.log(`${LOG} workspace AI loaded — v${BUILD_VERSION}`);
 const busyWindows = new WeakSet();
@@ -50,28 +51,28 @@ const organizeWorkspace = async () => {
   if (!tabs.length) { showToast("No eligible tabs to organize in this workspace. Pinned, essential and excluded tabs stay in place."); return; }
   const snapshot = captureTabSnapshot(allTabs);
   const review = Services.prefs.getBoolPref(CONFIG.AI_REVIEW_PREF, false);
-  const original = captureLayout();
-  const rulesBefore = Services.prefs.getStringPref(CONFIG.RULES_PREF, "");
-  if (engine === "jev") {
-    const { runJevSort } = await import("./jev-sort.mjs");
-    if (window.gZenWorkspaces?.activeWorkspace !== workspaceId || !isTabSnapshotCurrent(snapshot, getEligibleTabs().tabs)) { showToast("Tabs changed before sorting started. Run it again."); return; }
-    await runJevSort({ tabs, workspaceId, snapshot, sourceOverride: "suggest", previewOverride: review, persistCategories: false });
-    return;
-  }
+  const reconciler = createSnapshotReconciler(snapshot);
+  let original = [], rulesBefore = "";
   let session, applying = false, finished = false;
-  const ui = showSortProgress({ stage: `Preparing ${tabs.length} tabs…`, onStop: () => session?.stop(), onUndo: undoLastSort, onDismiss: clearSortUndo, onSetup: openAISetup });
+  const ui = showSortProgress({ stage: `Preparing ${tabs.length} tabs…`, onStop: () => session?.stop(), onUndo: undoLastSort, onDismiss: clearSortUndo, onSetup: openAISetup, onRetry: handleOrganizeClick });
   const finish = (message, undo = canUndoLastSort(), label) => { finished = true; ui.finish(message, undo, { label }); };
-  const settingsBefore = captureSortSettings(Services.prefs);
+  const prefNames = primarySortPrefNames(engine, engine === "jev" ? readJevSettings(Services.prefs).categoryProvider : undefined);
+  const settingsBefore = captureSortSettings(Services.prefs, prefNames);
   try {
-    session = beginSortSession({ isCurrent: () => window.gZenWorkspaces?.activeWorkspace === workspaceId &&
-      isTabSnapshotCurrent(snapshot, getEligibleTabs().tabs) && captureSortSettings(Services.prefs) === settingsBefore,
-      onProgress: ui.stage });
+    session = beginSortSession({ isCurrent: () => window.gZenWorkspaces?.activeWorkspace !== workspaceId ? "workspace" :
+      captureSortSettings(Services.prefs, prefNames) !== settingsBefore ? "settings" : true,
+      prefNames, preferenceReason: "settings", onProgress: ui.stage,
+      onTabChange: reconciler.onTabChange, onLocationChange: reconciler.onLocationChange });
     let plan;
     if (engine === "local") {
       const { runPass2Fresh } = await import("./ai.mjs");
       session.checkpoint();
       ui.stage(`Finding topics in ${tabs.length} tabs on this device…`);
       plan = await runPass2Fresh(tabs, [], workspaceId, { workspaceAI: true });
+    } else if (engine === "jev") {
+      const { planDecisionWorkspace } = await import("./ai-decision-plan.mjs");
+      session.checkpoint();
+      plan = await planDecisionWorkspace(tabs, { signal: session.signal });
     } else {
       const { planAIWorkspace } = await import("./ai-workspace-plan.mjs");
       session.checkpoint();
@@ -94,8 +95,22 @@ const organizeWorkspace = async () => {
     }
     session.checkpoint();
     validateAIPlan(plan, tabs);
-    // The native apply is synchronous. Remove planning observers before our own
-    // moves, then keep one receipt for the entire operation.
+    const currentTabs = getEligibleTabs().tabs;
+    const reconciled = reconciler.reconcile(plan, currentTabs, tabs);
+    plan = reconciled.plan;
+    validateAIPlan(plan, currentTabs);
+    const assignedCount = plan.assignedToExisting.length + plan.newGroups.reduce((count, group) => count + group.tabs.length, 0);
+    if (!assignedCount) {
+      if (reconciled.changedCount) ui.retryAvailable();
+      finish(reconciled.changedCount ? "The original tabs changed while AI was working. Retry to tidy the current tabs." :
+        "AI kept these tabs in place. Your layout is unchanged.", canUndoLastSort(),
+        reconciled.changedCount ? "Tabs changed" : "Tabs kept in place");
+      return;
+    }
+    // Capture Undo after concurrent browsing, immediately before native apply.
+    // New tabs and manual edits made during AI are part of the current layout.
+    original = captureLayout();
+    rulesBefore = Services.prefs.getStringPref(CONFIG.RULES_PREF, "");
     session.dispose(); applying = true;
     ui.stage("Putting your tabs into groups…");
     const applied = applyPass2(plan, workspaceId, [], { existingBehavior: "transient", newGroupBehavior: "transient", persistRules: false, workspaceAI: true });
@@ -103,15 +118,24 @@ const organizeWorkspace = async () => {
     window.gZenWorkspaces?.updateTabsContainers?.();
     const canUndo = recordSortUndo(original, { workspaceId, rulesBefore, rulesAfter: rulesBefore });
     const before = new Map(original.map((entry) => [entry.ref, entry]));
-    const moved = captureLayout().filter((entry) => entry.group !== before.get(entry.ref)?.group || entry.position !== before.get(entry.ref)?.position).length;
+    const assignedRefs = new Set([...plan.assignedToExisting.map((entry) => entry.tabInfo._tab), ...plan.newGroups.flatMap((group) => group.tabs.map((tab) => tab._tab))]);
+    const moved = captureLayout().filter((entry) => assignedRefs.has(entry.ref) &&
+      (entry.group !== before.get(entry.ref)?.group || entry.position !== before.get(entry.ref)?.position)).length;
     const unchanged = (plan.skipped?.length || 0) + (plan.unresolved?.length || 0) + (applied.failedTabs?.length || 0);
     finish(applied.errors?.length ? `Some tabs could not be moved. ${moved} changed; failed tabs were restored where possible.` :
-      moved ? `Tidied ${tabs.length} tabs${unchanged ? ` · ${unchanged} kept in place` : ""}` :
+      moved ? `Tidied ${assignedCount} tabs${unchanged ? ` · ${unchanged} kept in place` : ""}` :
       unchanged ? `AI kept ${unchanged} tabs in place. Your layout is unchanged.` : "Your tabs are already organized.", canUndo,
-      applied.errors?.length ? "Some tabs stayed" : moved ? `${tabs.length} tabs tidy` : unchanged ? "Tabs kept in place" : "Already tidy");
+      applied.errors?.length ? "Some tabs stayed" : moved ? `${assignedCount} tabs tidy` : unchanged ? "Tabs kept in place" : "Already tidy");
   } catch (error) {
     if (error.name === "AbortError" || session?.signal.aborted) {
-      finish(session?.reason === "stale" ? "Tabs or settings changed. Your layout is unchanged. Run it again." : "Sorting stopped. Your layout is unchanged.");
+      ui.retryAvailable();
+      if (session?.reason === "settings") {
+        const sharingOff = !["local", "ollama"].includes(engine) && !Services.prefs.getBoolPref(CONFIG.AI_PROVIDER_CONSENT_PREF, false);
+        if (sharingOff) ui.setupAvailable();
+        finish(sharingOff ? "AI sharing is off. Your layout is unchanged. Open Setup to allow sending tab metadata." :
+          "AI setup changed. Your layout is unchanged. Retry with the current setup.", canUndoLastSort(), sharingOff ? "Sharing off" : "New setup");
+      } else finish(session?.reason === "workspace" ? "You switched workspaces. Your layout is unchanged. Retry to tidy this workspace." :
+        "Sorting stopped. Your layout is unchanged.", canUndoLastSort(), session?.reason === "workspace" ? "New space" : "Stopped");
     } else {
       const failure = sortFailureNotice(error, engine);
       const detail = safeProviderErrorMessage(error, [settings?.apiKey]);

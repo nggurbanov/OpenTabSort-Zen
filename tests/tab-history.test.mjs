@@ -101,12 +101,11 @@ test("undo receipts are isolated between browser windows", () => withEnvironment
   second.activate(); assert.equal(undoLastSort(), true); assert.deepEqual(second.tabs, secondOrder);
 }));
 
-for (const change of ["order", "title", "url", "group", "closed", "new"]) {
+for (const change of ["order", "url", "group", "closed", "new"]) {
   test(`undo rejects stale ${change} changes and preserves the newer state`, () => withEnvironment(({ makeWindow }) => {
     const state = makeWindow(); state.makeTab("one"); state.makeTab("two");
     reorderAndRecord(state);
     if (change === "order") state.tabs.reverse();
-    if (change === "title") state.tabs[0].setAttribute("label", "edited title");
     if (change === "url") state.tabs[0].linkedBrowser.currentURI.spec = "https://changed.test/";
     if (change === "group") state.attach(state.tabs[0], state.makeGroup("Manual"));
     if (change === "closed") state.tabs[0].isConnected = false;
@@ -117,6 +116,19 @@ for (const change of ["order", "title", "url", "group", "closed", "new"]) {
     assert.deepEqual(state.tabs.map((tab) => tab.group), memberships);
   }));
 }
+
+test("background title and favicon changes keep Undo available without restoring old metadata", () => withEnvironment(({ makeWindow }) => {
+  const state = makeWindow(); const order = [state.makeTab("one"), state.makeTab("two")];
+  reorderAndRecord(state);
+  const changed = state.tabs[0];
+  changed.setAttribute("label", "Inbox (3)");
+  changed.setAttribute("image", "https://two.test/favicon.png");
+  assert.equal(canUndoLastSort(), true);
+  assert.equal(undoLastSort(), true);
+  assert.deepEqual(state.tabs, order);
+  assert.equal(changed.getAttribute("label"), "Inbox (3)");
+  assert.equal(changed.getAttribute("image"), "https://two.test/favicon.png");
+}));
 
 test("workspace switching rejects undo without deleting the valid receipt", () => withEnvironment(({ makeWindow }) => {
   const state = makeWindow(); const order = [state.makeTab("one"), state.makeTab("two")];

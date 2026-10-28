@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.5 — Unreleased
+
+- Keep primary sorting running through background title/favicon updates and opened or closed tabs. Apply only still-valid original native references; leave new tabs and intervening navigation/manual layout edits outside the operation.
+- Capture Undo immediately before applying groups so it preserves browsing during planning. Later title updates no longer invalidate Undo; conflicting layout edits remain guarded.
+- Offer compact Retry feedback for selected AI setup changes, workspace switches, and Stop; route revoked metadata consent to Setup. Ignore unrelated provider and Advanced preferences during primary planning.
+- Buffer primary Decision assignments until the complete plan can be reconciled, reviewed, and applied through the common boundary. Keep Advanced Decision's progressive workflow.
+- Add real Zen concurrent-browsing, HTTP abort, Retry, narrow-sidebar, and Undo acceptance. See [the verification record](docs/live-sort-verification.md).
+
 ## 2.0.4 — Unreleased
 
 - Give Mercury 3 workspace planning up to 65536 output tokens on OpenRouter, including the verified dated model alias. The request builder now preserves the larger ceiling instead of silently clipping it to 8192.

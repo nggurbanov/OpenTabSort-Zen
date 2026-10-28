@@ -41,6 +41,7 @@ const environment = (t, { sidebar = true, anchor = sidebar, stableHost = sidebar
     insertBefore(child, next) { child.remove(); child.parentNode = this; const index = this.children.indexOf(next); this.children.splice(index < 0 ? this.children.length : index, 0, child); notify(this); return child; }
     remove() { if (this.parentNode) { const parent = this.parentNode; parent.children.splice(parent.children.indexOf(this), 1); this.parentNode = null; notify(parent); } }
     contains(node) { return node === this || this.children.some((child) => child.contains(node)); }
+    focus() { document.activeElement = this; }
     matches(selector) {
       if (selector.startsWith("#")) return this.id === selector.slice(1);
       if (selector.startsWith(".") && !this.classList.contains(selector.match(/^\.([\w-]+)/)[1])) return false;
@@ -242,4 +243,95 @@ test("an unknown sidebar hierarchy falls back to a viewport-clamped overlay", (t
   assert.equal(row.getAttribute("data-placement"), "overlay");
   assert.equal(row.style.top, "8px");
   assert.equal(row.parentElement, env.root);
+});
+
+
+test("Retry is an explicit finished-state action with short visible copy and a full accessible explanation", (t) => {
+  const env = environment(t); let retried = 0;
+  const ui = showSortProgress({ onRetry: () => retried++ });
+  const row = env.row(), retry = row.querySelector('[data-action="retry"]');
+  retry.emit("click"); ui.retryAvailable(); retry.emit("click");
+  assert.equal(retried, 0); assert.equal(retry.hidden, true);
+  assert.deepEqual(actions(row).map((node) => node.textContent), ["Stop"]);
+  const message = "AI setup changed. Your layout is unchanged. Retry with the new setup.";
+  ui.finish(message, false, { label: "AI setup changed" });
+  assert.equal(status(row).textContent, "AI setup changed");
+  assert.equal(status(row).getAttribute("aria-label"), message);
+  assert.equal(retry.getAttribute("aria-label"), "Retry sort");
+  assert.equal(retry.type, "button");
+  assert.deepEqual(actions(row).map((node) => node.textContent), ["Retry"]);
+  assert.equal(row.getAttribute("data-state"), "error");
+  env.advance(6000); assert.equal(env.row(), row); assert.equal(env.timers.size, 0);
+  retry.emit("click"); retry.emit("click");
+  assert.equal(retried, 1); assert.equal(retry.disabled, true);
+});
+
+test("keyboard retry replaces the focused row safely and transfers focus through Stop to Undo", async (t) => {
+  const env = environment(t); let retried = 0, next;
+  const ui = showSortProgress({ onRetry: () => {
+    retried++;
+    next = showSortProgress({ onUndo() {} });
+    return Promise.resolve();
+  } });
+  ui.finish("Workspace changed. Retry in this workspace.", false, { label: "Workspace changed" });
+  ui.retryAvailable();
+  const oldRow = env.row(), retry = oldRow.querySelector('[data-action="retry"]');
+  retry.focus(); assert.equal(env.document.activeElement, retry);
+  // Native buttons dispatch click for keyboard activation as well as pointers.
+  retry.emit("click", { detail: 0 }); retry.emit("click", { detail: 0 });
+  await Promise.resolve();
+  const newRow = env.row(), stop = newRow.querySelector('[data-action="stop"]');
+  assert.notEqual(newRow, oldRow); assert.equal(oldRow.isConnected, false);
+  assert.equal(retried, 1); assert.equal(retry.listenerCount(), 0);
+  assert.equal(env.document.activeElement, stop);
+  next.finish("Tidied 300 tabs", true);
+  assert.equal(env.document.activeElement, newRow.querySelector('[data-action="undo"]'));
+});
+
+test("Retry keeps the existing Undo and Setup priorities without stealing focus from browser content", (t) => {
+  const env = environment(t), content = new env.Element("browser"); env.root.appendChild(content); content.focus();
+  let retried = 0;
+  const ui = showSortProgress({ onRetry: () => retried++, onUndo() {}, onSetup() {} });
+  ui.retryAvailable(); ui.finish("AI setup changed", true);
+  const row = env.row(), retry = row.querySelector('[data-action="retry"]');
+  assert.equal(env.document.activeElement, content);
+  assert.deepEqual(actions(row).map((node) => node.textContent), ["Undo"]);
+  retry.emit("click"); assert.equal(retried, 0);
+  row.querySelector('[data-action="undo"]').focus(); ui.setUndoAvailable(false);
+  assert.deepEqual(actions(row).map((node) => node.textContent), ["Retry"]);
+  assert.equal(env.document.activeElement, retry);
+  ui.setupAvailable();
+  assert.deepEqual(actions(row).map((node) => node.textContent), ["Setup"]);
+  assert.equal(env.document.activeElement, row.querySelector('[data-action="setup"]'));
+  retry.emit("click"); assert.equal(retried, 0);
+});
+
+test("a failed Retry callback is contained and can be attempted again without an unhandled rejection", async (t) => {
+  const env = environment(t); let retried = 0;
+  const ui = showSortProgress({ onRetry: () => {
+    retried++;
+    if (retried === 1) throw new Error("synchronous retry failure");
+    return Promise.reject(new Error("asynchronous retry failure"));
+  } });
+  ui.retryAvailable(); ui.finish("Workspace changed");
+  const retry = env.row().querySelector('[data-action="retry"]');
+  retry.emit("click"); assert.equal(retry.disabled, false);
+  retry.emit("click"); retry.emit("click"); assert.equal(retried, 2); assert.equal(retry.disabled, true);
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(retry.disabled, false);
+  ui.remove(); retry.emit("click"); assert.equal(retried, 2);
+  assert.equal(retry.listenerCount(), 0); assert.equal(env.observers.size, 0); assert.equal(env.timers.size, 0);
+});
+
+test("Retry feedback keeps native Escape dismissal and releases its controls on cleanup", (t) => {
+  const env = environment(t); let retried = 0, dismissed = 0;
+  const ui = showSortProgress({ onRetry: () => retried++, onDismiss: () => dismissed++ });
+  ui.retryAvailable(); ui.finish("Workspace changed");
+  const row = env.row(), retry = row.querySelector('[data-action="retry"]');
+  row.emit("keydown", { key: "Escape" });
+  assert.equal(env.row(), null); assert.equal(dismissed, 1);
+  assert.equal(row.listenerCount(), 0); assert.equal(retry.listenerCount(), 0);
+  assert.equal(env.window.listenerCount(), 0); assert.equal(env.observers.size, 0); assert.equal(env.timers.size, 0);
+  retry.emit("click"); env.window.emit("unload");
+  assert.equal(retried, 0); assert.equal(dismissed, 1);
 });
