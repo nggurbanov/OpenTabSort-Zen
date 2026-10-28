@@ -539,7 +539,7 @@ const performInject = (dialog) => {
         dialog.close();
       });
       const note = h("p", { class: "zao-pref-description",
-        text: "Optional tools and settings from the previous sorting workflow. The wand uses AI and leaves this saved data unchanged." });
+        text: "Optional tools and settings from the previous sorting workflow. Organize tabs uses AI and leaves this saved data unchanged." });
       advancedContent.insertBefore(note, advancedContent.firstChild);
       advancedContent.insertBefore(run, note.nextSibling);
       tagSeparatorContainers(dialog);

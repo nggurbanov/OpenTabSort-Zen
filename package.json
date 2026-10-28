@@ -1,6 +1,6 @@
 {
   "name": "opentabsort-zen",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "private": true,
   "type": "module",
   "description": "One-click AI grouping for crowded Zen workspaces, with Stop, Undo and optional review.",
@@ -18,7 +18,8 @@
     "e2e:operations": "node scripts/e2e-overhaul.mjs",
     "e2e:recovery": "node scripts/e2e-output-recovery.mjs",
     "e2e:settings": "node scripts/e2e-settings.mjs",
-    "e2e:live-sort": "node scripts/e2e-live-sort.mjs"
+    "e2e:live-sort": "node scripts/e2e-live-sort.mjs",
+    "e2e:separator": "node scripts/e2e-separator.mjs"
   },
   "engines": {
     "node": ">=20"

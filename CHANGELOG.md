@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.6 — Unreleased
+
+- Replace the magic wand with a grouping icon that appears on divider hover or keyboard focus, like native Clear. During sorting the same button becomes a persistent Stop.
+- Animate the existing divider line instead of adding a progress row above the tabs. Keep Undo, Retry and Setup inline, preserve sidebar height, respect reduced motion, and keep active controls reachable while scrolling large workspaces.
+- Add a default-on **Use unique emoji in group names** checkbox. Allocate distinct icons locally, reserve untouched groups' icons, reuse existing native targets across emoji spelling changes, and preserve names through Undo. Turning the setting off uses plain names on the next sort.
+- Treat emoji changes as presentation: update the final labels without cancelling an in-flight AI request. Preview shows the proposed labels. No extra provider request or startup inference is added.
+- Add native separator/mouse/Stop, emoji stability, plain-name/Undo, settings and lifecycle regressions. See [verification](docs/separator-verification.md).
+
 ## 2.0.5 — Unreleased
 
 - Keep primary sorting running through background title/favicon updates and opened or closed tabs. Apply only still-valid original native references; leave new tabs and intervening navigation/manual layout edits outside the operation.

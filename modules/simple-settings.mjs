@@ -42,7 +42,7 @@ export const buildSimpleSettings = ({ onChange = () => {} } = {}) => {
   const root = h("section", { class: "zao-simple-settings" });
   const heading = h("h2", { text: "AI setup" });
   root.append(heading, h("p", { class: "zao-simple-intro",
-    text: "Click the wand to organize this workspace. AI creates the groups. Stop and Undo stay available." }));
+    text: "Use Organize tabs in the sidebar. AI creates the groups. Stop and Undo stay available." }));
   const connection = h("div", { class: "zao-simple-connection" });
   const providerFields = h("div", { class: "zao-simple-fields" });
   const engineLabel = h("label", { class: "zao-simple-field" });
@@ -102,6 +102,7 @@ export const buildSimpleSettings = ({ onChange = () => {} } = {}) => {
     }
     if (["openai", "gemini", "custom", "jev"].includes(value)) checkbox(CONFIG.AI_PROVIDER_CONSENT_PREF,
       "Allow sending tab titles, site paths, and current group names to the selected AI providers", providerFields);
+    checkbox(CONFIG.AI_GROUP_EMOJI_PREF, "Use unique emoji in group names", providerFields, true);
     checkbox(CONFIG.AI_REVIEW_PREF, "Review groups before applying", providerFields);
   };
   engine.addEventListener("change", () => {

@@ -274,3 +274,11 @@ test("a no-op never exposes an older receipt after a manual layout change", () =
   assert.equal(recordSortUndo(captureLayout()), false);
   assert.equal(canUndoLastSort(), false);
 }));
+
+test("Undo restores the original label on a reused group decorated during sorting", () => withEnvironment(({ makeWindow }) => {
+  const state = makeWindow(); const group = state.makeGroup("Work");
+  state.makeTab("one", group); state.activate();
+  const original = captureLayout(); group.setAttribute("label", "💻 Work");
+  assert.equal(recordSortUndo(original), true); assert.equal(undoLastSort(), true);
+  assert.equal(group.getAttribute("label"), "Work");
+}));

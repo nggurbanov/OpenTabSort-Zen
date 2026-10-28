@@ -17,19 +17,19 @@
   },
   {
     "type": "checkbox",
-    "label": "Minimal style \u2014 strip group colors and match Zen's address-bar styling",
+    "label": "Minimal style — strip group colors and match Zen's address-bar styling",
     "property": "extensions.zen-auto-organize.minimal-style",
     "defaultValue": false
   },
   {
     "type": "checkbox",
-    "label": "Strict rule enforcement \u2014 eject tabs from a group when their hostname isn't in that group's rule",
+    "label": "Strict rule enforcement — eject tabs from a group when their hostname isn't in that group's rule",
     "property": "extensions.zen-auto-organize.strict-rules",
     "defaultValue": false
   },
   {
     "type": "dropdown",
-    "label": "Rule matching priority \u2014 choose whether URL/domain matches or title matches are checked first",
+    "label": "Rule matching priority — choose whether URL/domain matches or title matches are checked first",
     "property": "extensions.zen-auto-organize.match-mode",
     "defaultValue": "url-then-title",
     "options": [
@@ -53,7 +53,7 @@
   },
   {
     "type": "dropdown",
-    "label": "Gradient style \u2014 choose how two-color group gradients are drawn",
+    "label": "Gradient style — choose how two-color group gradients are drawn",
     "property": "extensions.zen-auto-organize.gradient-style",
     "defaultValue": "left-right",
     "options": [
@@ -103,30 +103,36 @@
         "value": "off"
       },
       {
-        "label": "Local \u2014 Built-in model, limited capability",
+        "label": "Local — Built-in model, limited capability",
         "value": "local"
       },
       {
-        "label": "Ollama \u2014 Stronger model, requires Ollama running locally",
+        "label": "Ollama — Stronger model, requires Ollama running locally",
         "value": "ollama"
       },
       {
-        "label": "OpenAI-compatible \u2014 Remote or self-hosted /v1/chat/completions",
+        "label": "OpenAI-compatible — Remote or self-hosted /v1/chat/completions",
         "value": "openai"
       },
       {
-        "label": "Gemini \u2014 Google AI Studio generateContent",
+        "label": "Gemini — Google AI Studio generateContent",
         "value": "gemini"
       },
       {
-        "label": "Custom \u2014 OpenAI or Ollama-compatible endpoint",
+        "label": "Custom — OpenAI or Ollama-compatible endpoint",
         "value": "custom"
       },
       {
-        "label": "Decision models \u2014 Jev and compatible APIs",
+        "label": "Decision models — Jev and compatible APIs",
         "value": "jev"
       }
     ]
+  },
+  {
+    "property": "extensions.zen-auto-organize.ai-group-emoji",
+    "label": "Use unique emoji in group names",
+    "type": "checkbox",
+    "default": true
   },
   {
     "property": "extensions.zen-auto-organize.ai-review-before-apply",
@@ -147,18 +153,18 @@
     "defaultValue": "rules-first",
     "options": [
       {
-        "label": "Rules + AI \u2014 Match rules, then classify leftovers",
+        "label": "Rules + AI — Match rules, then classify leftovers",
         "value": "rules-first"
       },
       {
-        "label": "Full AI \u2014 Regroup all eligible tabs without saving rules",
+        "label": "Full AI — Regroup all eligible tabs without saving rules",
         "value": "full-ai"
       }
     ]
   },
   {
     "type": "dropdown",
-    "label": "AI title learning \u2014 propose reviewed T chips from tab titles (simple) and/or page content (complex)",
+    "label": "AI title learning — propose reviewed T chips from tab titles (simple) and/or page content (complex)",
     "property": "extensions.zen-auto-organize.ai-title-learning",
     "defaultValue": "off",
     "placeholder": false,
@@ -179,44 +185,44 @@
   },
   {
     "type": "dropdown",
-    "label": "Existing AI matches \u2014 choose whether matched tabs update saved rules",
+    "label": "Existing AI matches — choose whether matched tabs update saved rules",
     "property": "extensions.zen-auto-organize.ai-existing-behavior",
     "defaultValue": "always-add",
     "options": [
       {
-        "label": "Move + Save Domain \u2014 Move the tab and add its domain to the matched rule",
+        "label": "Move + Save Domain — Move the tab and add its domain to the matched rule",
         "value": "always-add"
       },
       {
-        "label": "Move Once \u2014 Move the tab now; do not update saved rules",
+        "label": "Move Once — Move the tab now; do not update saved rules",
         "value": "transient"
       }
     ]
   },
   {
     "type": "dropdown",
-    "label": "New AI groups \u2014 choose whether new groups become saved rules",
+    "label": "New AI groups — choose whether new groups become saved rules",
     "property": "extensions.zen-auto-organize.ai-new-group-behavior",
     "defaultValue": "auto-add",
     "options": [
       {
-        "label": "Preview + Save Rule \u2014 Review first; kept groups become saved rules",
+        "label": "Preview + Save Rule — Review first; kept groups become saved rules",
         "value": "auto-add"
       },
       {
-        "label": "Group Once \u2014 Create groups now; do not save rules",
+        "label": "Group Once — Create groups now; do not save rules",
         "value": "transient"
       },
       {
-        "label": "Zen Edit Prompt \u2014 Create groups, then open Zen's rename/color dialog",
+        "label": "Zen Edit Prompt — Create groups, then open Zen's rename/color dialog",
         "value": "prompt"
       },
       {
-        "label": "Fresh Rebuild \u2014 Ignore current rules and regroup all tabs from scratch",
+        "label": "Fresh Rebuild — Ignore current rules and regroup all tabs from scratch",
         "value": "fresh-categories"
       },
       {
-        "label": "Preview Only \u2014 Review/re-assign first; apply groups without saving rules",
+        "label": "Preview Only — Review/re-assign first; apply groups without saving rules",
         "value": "identify-only"
       }
     ]
@@ -235,7 +241,7 @@
   },
   {
     "type": "checkbox",
-    "label": "Keep Ollama model warm \u2014 preloads at browser start and keeps it loaded between clicks (faster tidy clicks; uses VRAM continuously)",
+    "label": "Keep Ollama model warm — preloads at browser start and keeps it loaded between clicks (faster tidy clicks; uses VRAM continuously)",
     "property": "extensions.zen-auto-organize.ai-ollama-warmup",
     "defaultValue": false
   },
@@ -251,7 +257,7 @@
   },
   {
     "type": "string",
-    "label": "Decision API endpoint \u2014 full System One-compatible URL (OpenRouter: https://openrouter.ai/api/v1/systemone)",
+    "label": "Decision API endpoint — full System One-compatible URL (OpenRouter: https://openrouter.ai/api/v1/systemone)",
     "property": "extensions.zen-auto-organize.ai-jev-endpoint",
     "defaultValue": "https://api.typesafe.ai/v1/systemone"
   },
@@ -263,7 +269,7 @@
   },
   {
     "type": "string",
-    "label": "Decision model ID \u2014 any model supported by your endpoint",
+    "label": "Decision model ID — any model supported by your endpoint",
     "property": "extensions.zen-auto-organize.ai-jev-model",
     "defaultValue": "jev-latest"
   },
@@ -274,15 +280,15 @@
     "defaultValue": "reuse",
     "options": [
       {
-        "label": "Reuse my categories \u2014 Suggest automatically on first use",
+        "label": "Reuse my categories — Suggest automatically on first use",
         "value": "reuse"
       },
       {
-        "label": "Suggest from my tabs \u2014 Refresh categories every sort",
+        "label": "Suggest from my tabs — Refresh categories every sort",
         "value": "suggest"
       },
       {
-        "label": "Define my own \u2014 Use only saved categories",
+        "label": "Define my own — Use only saved categories",
         "value": "manual"
       }
     ]
@@ -319,7 +325,7 @@
   },
   {
     "type": "string",
-    "label": "Minimum Jev confidence (0\u20131)",
+    "label": "Minimum Jev confidence (0–1)",
     "property": "extensions.zen-auto-organize.ai-jev-confidence",
     "defaultValue": "0.5"
   },

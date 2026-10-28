@@ -265,3 +265,19 @@ test("workspace AI ignores rule-learning options and reviewed rule patches", () 
   assert.deepEqual(rules, [{ name: "Reading", domains: ["old.test"] }]);
   assert.deepEqual(browser.writes, []);
 }));
+
+test("primary group emoji reuse native targets, reserve untouched icons, and can be disabled", () => withBrowser({}, (browser) => {
+  const manual = browser.makeGroup("💼 Manual"); browser.makeTab("manual.test", manual);
+  const first = browser.makeTab("first.test"), second = browser.makeTab("second.test");
+  const plan = makePlan([], [{ name: "💻 Work", tabs: [first] }, { name: "💻 Reading", tabs: [second] }]);
+  const options = { ...transient, workspaceAI: true, emojiGroupNames: true };
+  const result = applyPass2(plan, workspaceId, [], options);
+  assert.deepEqual(result.errors, []);
+  const work = first._tab.closest("tab-group"), reading = second._tab.closest("tab-group");
+  assert.notEqual(work.getAttribute("label").split(" ")[0], reading.getAttribute("label").split(" ")[0]);
+  assert.equal(manual.getAttribute("label"), "💼 Manual");
+  const again = makePlan([first, second].map((tabInfo) => ({ tabInfo, groupName: tabInfo._tab.closest("tab-group").getAttribute("label") })));
+  applyPass2(again, workspaceId, [], { ...options, emojiGroupNames: false });
+  assert.equal(work.getAttribute("label"), "Work"); assert.equal(reading.getAttribute("label"), "Reading");
+  assert.equal(first._tab.closest("tab-group"), work); assert.equal(second._tab.closest("tab-group"), reading);
+}));

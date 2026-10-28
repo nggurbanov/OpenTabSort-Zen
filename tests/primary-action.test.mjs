@@ -131,13 +131,14 @@ test("a background title update does not discard the completed primary AI plan",
 });
 
 
-for (const scenario of ["unused-provider-changed", "warmup-changed", "legacy-rules-changed"]) {
+for (const scenario of ["unused-provider-changed", "warmup-changed", "legacy-rules-changed", "emoji-setting-changed"]) {
   test(`primary ${scenario} does not invalidate the active AI request`, () => {
     const result = run(scenario);
     assert.equal(result.apply, 1);
     assert.equal(result.plannerCalls, 1);
     assert.equal(result.requests, 1);
     assert.equal(result.observersLeft, 0);
+    if (scenario === "emoji-setting-changed") assert.equal(result.applyOptions.emojiGroupNames, false);
     if (scenario === "legacy-rules-changed") assert.match(result.recordedRulesBefore, /Manual edit during sorting/);
   });
 }

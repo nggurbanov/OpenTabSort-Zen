@@ -4,33 +4,19 @@ import { CONFIG, LOG } from "./config.mjs";
 import { domCache } from "./tabs.mjs";
 const handleOrganizeClick = async () => (await import("./click-handler.mjs")).handleOrganizeClick();
 
-// Lucide "wand-sparkles" — the magic wand with a sparkle around the tip.
-// Inline SVG (not an icon-font / external file) so it inherits currentColor from
-// the toolbar theme and animates cleanly with the .zao-wiggling class.
-const WAND_ICON_SVG = `
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
-       fill="none" stroke="currentColor" stroke-width="2"
-       stroke-linecap="round" stroke-linejoin="round">
-    <path d="M15 4V2"/>
-    <path d="M15 16v-2"/>
-    <path d="M8 9h2"/>
-    <path d="M20 9h2"/>
-    <path d="M17.8 11.8 19 13"/>
-    <path d="M15 9h.01"/>
-    <path d="M17.8 6.2 19 5"/>
-    <path d="m3 21 9-9"/>
-    <path d="M12.2 6.2 11 5"/>
-  </svg>
-`;
+import { SORT_ICON_SVG, STOP_ICON_SVG } from "./sort-icons.mjs";
 
 const buttonXul = () => `
   <toolbarbutton
     id="${CONFIG.BUTTON_ID}"
     command="${CONFIG.COMMAND_ID}"
+    tabindex="0"
+    aria-label="Organize tabs"
     label="Organize tabs"
     tooltiptext="Organize tabs in this workspace">
     <hbox class="toolbarbutton-box" align="center">
-      ${WAND_ICON_SVG}
+      <html:span class="zao-sort-icon" xmlns:html="http://www.w3.org/1999/xhtml">${SORT_ICON_SVG}</html:span>
+      <html:span class="zao-stop-icon" xmlns:html="http://www.w3.org/1999/xhtml">${STOP_ICON_SVG}</html:span>
     </hbox>
   </toolbarbutton>
 `;
@@ -60,6 +46,7 @@ export const addButtonToAllSeparators = () => {
   const separators = domCache.getSeparators();
   if (separators.length > 0) {
     separators.forEach(ensureOrganizeButton);
+    window._zaoSeparatorOperation?.refresh();
   } else {
     const periphery = document.querySelector("#tabbrowser-arrowscrollbox-periphery");
     if (periphery && !periphery.querySelector(`#${CONFIG.BUTTON_ID}`)) {
@@ -89,7 +76,9 @@ export const setupCommand = () => {
   // expando survives module reloads because it's pinned to the DOM element.
   if (!zenCommands._zaoCommandListener) {
     const listener = (event) => {
-      if (event.target.id === CONFIG.COMMAND_ID) handleOrganizeClick();
+      if (event.target.id !== CONFIG.COMMAND_ID) return;
+      if (window._zaoSeparatorOperation?.stop()) return;
+      handleOrganizeClick();
     };
     zenCommands.addEventListener("command", listener);
     zenCommands._zaoCommandListener = listener;
@@ -98,6 +87,7 @@ export const setupCommand = () => {
 };
 
 export const teardownCommand = () => {
+  window._zaoSeparatorOperation?.remove();
   const state = window._zaoCommandState;
   const target = state?.target || domCache.getCommandSet();
   const listener = state?.listener || target?._zaoCommandListener;

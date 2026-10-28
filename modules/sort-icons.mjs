@@ -1,0 +1,3 @@
+// Compact native-chrome icons; geometry, no magic metaphor.
+export const SORT_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="6" rx="1.5"/><path d="M14 5h7m-7 4h5"/><rect x="3" y="14" width="7" height="6" rx="1.5"/><path d="M14 15h7m-7 4h5"/></svg>`;
+export const STOP_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`;

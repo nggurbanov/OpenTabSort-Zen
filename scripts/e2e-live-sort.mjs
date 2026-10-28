@@ -129,11 +129,12 @@ const captureNarrowRetry = async ({ label = "New setup", suffix = "" } = {}) => 
   const geometry = await client.execute(`
     const win = Services.wm.getMostRecentWindow("navigator:browser");
     const row = win.document.querySelector(".zao-sort-progress");
-    row.style.inlineSize = "158px"; row.style.maxInlineSize = "158px";
-      const rect = row.getBoundingClientRect(), status = row.querySelector("[role=status]");
+    const host = row.parentElement;
+    host.style.inlineSize = "158px"; host.style.maxInlineSize = "158px";
+      const rect = host.getBoundingClientRect(), status = row.querySelector("[role=status]");
       return { width: rect.width, height: rect.height, top: rect.top, bottom: rect.bottom,
         viewportHeight: win.innerHeight, label: status.textContent, detail: status.title,
-        rowOverflow: row.scrollWidth > row.clientWidth, labelOverflow: status.scrollWidth > status.clientWidth,
+        rowOverflow: host.scrollWidth > host.clientWidth, labelVisuallyHidden: win.getComputedStyle(status).position === "absolute",
         labelWidth: status.clientWidth, labelContentWidth: status.scrollWidth,
         actions: [...row.querySelectorAll("button")].filter((node) => !node.hidden).map((node) => {
           const bounds = node.getBoundingClientRect();
@@ -144,9 +145,9 @@ const captureNarrowRetry = async ({ label = "New setup", suffix = "" } = {}) => 
   const path = suffix ? base.replace(/\.png$/, "-" + suffix + ".png") : base;
   await writeFile(path, Buffer.from(await client.command("WebDriver:TakeScreenshot", {}), "base64"));
   await writeFile(path + ".json", JSON.stringify(geometry, null, 2) + "\n");
-  assert.equal(geometry.width, 158); assert.equal(geometry.height, 32);
+  assert.equal(geometry.width, 158); assert.ok(geometry.height > 0 && geometry.height <= 32);
   assert.equal(geometry.label, label);
-  assert.equal(geometry.rowOverflow, false); assert.equal(geometry.labelOverflow, false);
+  assert.equal(geometry.rowOverflow, false); assert.equal(geometry.labelVisuallyHidden, true);
   assert.ok(geometry.top >= 0 && geometry.bottom <= geometry.viewportHeight);
   assert.deepEqual(geometry.actions.map((action) => action.action), ["retry", "dismiss"]);
   assert.ok(geometry.actions.every((action) => action.left >= 0 && action.right <= geometry.width));
@@ -279,7 +280,7 @@ try {
         ? 'Services.prefs.setStringPref("extensions.zen-auto-organize.ai-custom-model", "changed-model");'
         : mode === "consent"
           ? 'Services.prefs.setBoolPref("extensions.zen-auto-organize.ai-provider-consent", false);'
-          : 'win.document.querySelector(\'.zao-sort-progress button[data-action="stop"]\').click();');
+          : 'win.gZenWorkspaces.activeWorkspaceElement.querySelector(\'#tab-wand-button\').doCommand();');
       const stopped = await finish();
       assert.equal(stopped.error, undefined);
       assert.deepEqual(layout(stopped.state), layout(before));

@@ -18,7 +18,7 @@ Press one button and let AI organize the active workspace into useful, coherent 
 
 ## Operating Context
 
-Set up an AI connection once. Afterwards, use the wand in the workspace sidebar. Show meaningful progress, allow Stop during long work, and provide session Undo after changes. The browser remains usable while AI plans: routine title updates and opening or closing tabs must not force the user to restart sorting.
+Set up an AI connection once. Afterwards, use Organize tabs in the workspace sidebar. Show meaningful progress, allow Stop during long work, and provide session Undo after changes. The browser remains usable while AI plans: routine title updates and opening or closing tabs must not force the user to restart sorting.
 
 ## Capabilities and Constraints
 
@@ -40,3 +40,5 @@ Set up an AI connection once. Afterwards, use the wand in the workspace sidebar.
 3. Stay responsive on hundreds of tabs and bound network, memory and main-thread work.
 4. Make interruption and recovery predictable.
 5. Expose secondary configuration only when it is needed.
+
+The primary sorting control shares the native tab divider with Clear. Reveal its grouping icon on hover or keyboard focus, keep Stop visible while busy, and animate the line without adding another panel. Unique emoji labels are enabled by default and can be disabled in ordinary AI setup; formatting changes must not discard AI planning work.

@@ -17,6 +17,7 @@ import { showToast } from "./ui-toast.mjs";
 import { openAISetup } from "./setup-navigation.mjs";
 import { sortFailureNotice } from "./sort-failure.mjs";
 import { safeProviderErrorMessage } from "./safe-log.mjs";
+import { canonicalizeGroupNames, uniqueGroupLabels } from "./group-emoji.mjs";
 import { createSnapshotReconciler } from "./sort-reconciliation.mjs";
 
 console.log(`${LOG} workspace AI loaded — v${BUILD_VERSION}`);
@@ -50,6 +51,8 @@ const organizeWorkspace = async () => {
   const tabs = allTabs.filter((tab) => !excludedDomains.some((pattern) => matchesDomain(tab.hostname, pattern)));
   if (!tabs.length) { showToast("No eligible tabs to organize in this workspace. Pinned, essential and excluded tabs stay in place."); return; }
   const snapshot = captureTabSnapshot(allTabs);
+  let emojiGroupNames = Services.prefs.getBoolPref(CONFIG.AI_GROUP_EMOJI_PREF, true);
+  const existingNames = [...new Set(allTabs.map((tab) => tab.currentGroup).filter(Boolean))];
   const review = Services.prefs.getBoolPref(CONFIG.AI_REVIEW_PREF, false);
   const reconciler = createSnapshotReconciler(snapshot);
   let original = [], rulesBefore = "";
@@ -63,7 +66,7 @@ const organizeWorkspace = async () => {
       captureSortSettings(Services.prefs, prefNames) !== settingsBefore ? "settings" : true,
       prefNames, preferenceReason: "settings", onProgress: ui.stage,
       onTabChange: reconciler.onTabChange, onLocationChange: reconciler.onLocationChange });
-    let plan;
+    let plan, displayNames;
     if (engine === "local") {
       const { runPass2Fresh } = await import("./ai.mjs");
       session.checkpoint();
@@ -87,10 +90,15 @@ const organizeWorkspace = async () => {
       ui.setupAvailable();
       finish(failure.message, canUndoLastSort(), failure.label); return;
     }
+    emojiGroupNames = Services.prefs.getBoolPref(CONFIG.AI_GROUP_EMOJI_PREF, true);
+    plan = canonicalizeGroupNames(plan, existingNames);
     if (review && (plan.assignedToExisting.length || plan.newGroups.length)) {
       const { showPreviewModal } = await import("./preview-modal.mjs");
       ui.stage("Review the proposed groups…");
-      plan = await showPreviewModal({ plan, existingNames: [...new Set(tabs.map((tab) => tab.currentGroup).filter(Boolean))], signal: session.signal });
+      const targetNames = [...new Set([...plan.assignedToExisting.map((entry) => entry.groupName), ...plan.newGroups.map((group) => group.name)])];
+      const labels = uniqueGroupLabels(targetNames, existingNames.filter((name) => !targetNames.includes(name)), emojiGroupNames);
+      displayNames = new Map(targetNames.map((name, index) => [name, labels[index]]));
+      plan = await showPreviewModal({ plan, formatGroupName: (name) => displayNames.get(name) || name, existingNames: [...new Set(tabs.map((tab) => tab.currentGroup).filter(Boolean))], signal: session.signal });
       if (!plan) { session.checkpoint(); finish("Review cancelled. Your tabs are unchanged."); return; }
     }
     session.checkpoint();
@@ -109,18 +117,19 @@ const organizeWorkspace = async () => {
     }
     // Capture Undo after concurrent browsing, immediately before native apply.
     // New tabs and manual edits made during AI are part of the current layout.
+    emojiGroupNames = Services.prefs.getBoolPref(CONFIG.AI_GROUP_EMOJI_PREF, true);
     original = captureLayout();
     rulesBefore = Services.prefs.getStringPref(CONFIG.RULES_PREF, "");
     session.dispose(); applying = true;
     ui.stage("Putting your tabs into groups…");
-    const applied = applyPass2(plan, workspaceId, [], { existingBehavior: "transient", newGroupBehavior: "transient", persistRules: false, workspaceAI: true });
+    const applied = applyPass2(plan, workspaceId, [], { existingBehavior: "transient", newGroupBehavior: "transient", persistRules: false, workspaceAI: true, emojiGroupNames, groupDisplayNames: displayNames });
     dissolveEmptyGroups(workspaceId, new Set(original.map((entry) => entry.group).filter(Boolean)));
     window.gZenWorkspaces?.updateTabsContainers?.();
     const canUndo = recordSortUndo(original, { workspaceId, rulesBefore, rulesAfter: rulesBefore });
     const before = new Map(original.map((entry) => [entry.ref, entry]));
     const assignedRefs = new Set([...plan.assignedToExisting.map((entry) => entry.tabInfo._tab), ...plan.newGroups.flatMap((group) => group.tabs.map((tab) => tab._tab))]);
     const moved = captureLayout().filter((entry) => assignedRefs.has(entry.ref) &&
-      (entry.group !== before.get(entry.ref)?.group || entry.position !== before.get(entry.ref)?.position)).length;
+      (entry.group !== before.get(entry.ref)?.group || entry.label !== before.get(entry.ref)?.label || entry.position !== before.get(entry.ref)?.position)).length;
     const unchanged = (plan.skipped?.length || 0) + (plan.unresolved?.length || 0) + (applied.failedTabs?.length || 0);
     finish(applied.errors?.length ? `Some tabs could not be moved. ${moved} changed; failed tabs were restored where possible.` :
       moved ? `Tidied ${assignedCount} tabs${unchanged ? ` · ${unchanged} kept in place` : ""}` :

@@ -147,9 +147,9 @@ try {
   await within(waiting.promise, "Fallback classification request was not received");
   await client.execute(`
     const win = Services.wm.getMostRecentWindow("navigator:browser");
-    const stop = win.document.querySelector('.zao-sort-progress button[data-action="stop"]');
+    const stop = win.gZenWorkspaces.activeWorkspaceElement.querySelector('#tab-wand-button[data-zao-busy]');
     if (!stop || stop.hidden) throw new Error("Stop control unavailable during recovery");
-    stop.click();
+    stop.doCommand();
   `);
   const stopped = await client.executeAsync(`
     const done = arguments[arguments.length - 1], win = Services.wm.getMostRecentWindow("navigator:browser");

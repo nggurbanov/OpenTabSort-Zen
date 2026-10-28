@@ -10,6 +10,7 @@ import { captureTabSnapshot, isTabSnapshotCurrent, validateAIPlan, reserveNewGro
 import { sortFailureNotice } from "./modules/sort-failure.mjs";
 import { safeProviderErrorMessage } from "./modules/safe-log.mjs";
 import { createSnapshotReconciler } from "./modules/sort-reconciliation.mjs";
+import { canonicalizeGroupNames, uniqueGroupLabels } from "./modules/group-emoji.mjs";
 const scenario = process.argv[2], primary = process.argv[3] === "primary";
 const behavior = scenario.replace(/^primary-/, "");
 const state = { requests: 0, requestsAfterAbort: 0, apply: 0, mutations: 0, records: 0, imports: [], finishes: [], modalCalls: 0, errors: [], setupCalls: 0, ruleLoads: 0, plannerCalls: 0, pass1Calls: 0, legacyCalls: 0, toasts: [] };
@@ -36,7 +37,7 @@ const win = { gZenWorkspaces: { activeWorkspace:"w1", activeWorkspaceElement:{qu
 const services = {prefs:{PREF_STRING:32,PREF_BOOL:128,PREF_INT:64,
   getPrefType:(name)=>typeof prefs.get(name)==="boolean"?128:32,
   getStringPref:(name,fallback="")=>prefs.get(name)??fallback,
-  getBoolPref:(name)=>prefs.get(name)??false,
+  getBoolPref:(name,fallback=false)=>prefs.get(name)??fallback,
   getIntPref:(name)=>prefs.get(name)??0,
   addObserver:(_prefix,observer)=>observers.add(observer),removeObserver:(_prefix,observer)=>observers.delete(observer)}};
 const context = vm.createContext({console:{log:noop,warn:noop,error:(...args)=>state.errors.push(String(args[0]))},window:win,Services:services,AbortController,DOMException,queueMicrotask,setTimeout:()=>0});
@@ -52,6 +53,7 @@ const runProvider = async () => {
   if(behavior==="consent-revoked")notify(CONFIG.AI_PROVIDER_CONSENT_PREF,false);
   if(behavior==="tabs-changed")info.title="User changed the title";
   if(behavior==="unused-provider-changed")notify(CONFIG.AI_GEMINI_MODEL_PREF,"unused-model");
+  if(behavior==="emoji-setting-changed")notify(CONFIG.AI_GROUP_EMOJI_PREF,false);
   if(behavior==="warmup-changed")notify(CONFIG.AI_OLLAMA_WARMUP_PREF,true);
   if(behavior==="legacy-rules-changed")notify(CONFIG.RULES_PREF,JSON.stringify([{name:"Manual edit during sorting",domains:[]} ]));
   if(behavior==="workspace-changed")win.gZenWorkspaces.activeWorkspace="w2";
@@ -73,6 +75,7 @@ const dependencies = {
   "./ui-toast.mjs":{showToast:(message)=>state.toasts.push(message)},
   "./sort-plan.mjs":{captureTabSnapshot,isTabSnapshotCurrent,validateAIPlan,reserveNewGroupNames},
   "./sort-reconciliation.mjs":{createSnapshotReconciler},
+  "./group-emoji.mjs":{canonicalizeGroupNames,uniqueGroupLabels},
   "./operation-ui.mjs":{showSortProgress:(callbacks)=>{controls=callbacks;return {stage:noop,setupAvailable:()=>state.setupAvailable=true,retryAvailable:()=>state.retryAvailable=true,finish:(message,canUndo,options)=>state.finishes.push({message,canUndo,label:options?.label})};}},
   "./tab-history.mjs":{captureLayout:()=>[{ref:tab,group:null,position:0}],recordSortUndo:(_layout,options)=>{state.records++;state.recordedRulesBefore=options?.rulesBefore;return true;},undoLastSort:noop,clearSortUndo:noop,canUndoLastSort:()=>false},
   "./remote-provider.mjs":{runPass2Remote:runProvider,runPass2RemoteFresh:runProvider,classifyExistingGroupsRemoteBatch:async()=>new Map()},

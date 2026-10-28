@@ -11,3 +11,5 @@ The handler captures the Undo baseline immediately before synchronous `applyPass
 `handleLegacyOrganizeClick()` shares the per-window exclusivity guard and lazily imports `legacy-sort.mjs` for **Run advanced sorting**. Its saved-rule, Full AI, Fresh/Preview Only, title-learning, persistence and progressive Decision behavior remain separate.
 
 See [architecture](architecture.md), [Advanced behavior](advanced.md), and [native concurrent-browsing verification](live-sort-verification.md).
+
+Unique emoji presentation is enabled by default through ordinary AI setup. Resolve plain/emoji destination aliases before reconciliation; apply local unique labels only to successfully targeted groups. Read the preference again immediately before apply so a formatting change does not discard planning. Undo includes reused-group label changes.

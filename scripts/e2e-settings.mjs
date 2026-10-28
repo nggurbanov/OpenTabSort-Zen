@@ -101,9 +101,13 @@ try {
   const setup = await evaluate(`
     change("ai-engine", "custom");
     return { selected: field("ai-engine").value, keyMasked: field("ai-custom-api-key").type === "password",
-      reviewDefault: field("ai-review-before-apply").checked, consentDefault: field("ai-provider-consent").checked,
+      emojiDefault: field("ai-group-emoji").checked, reviewDefault: field("ai-review-before-apply").checked, consentDefault: field("ai-provider-consent").checked,
       noRules: !dialog.querySelector(".zao-rules-editor"), primaryFields: [...primary.querySelectorAll("input, select")].map((input) => input.dataset.pref) };
   `);
+  assert.equal(setup.emojiDefault, true);
+  const emojiToggle = await evaluate('const checkbox = field("ai-group-emoji"); checkbox.checked = false; checkbox.dispatchEvent(new Event("change", {bubbles:true})); return checkbox.checked;');
+  assert.equal(emojiToggle, false);
+  await evaluate('const checkbox = field("ai-group-emoji"); checkbox.checked = true; checkbox.dispatchEvent(new Event("change", {bubbles:true})); return true;');
   assert.equal(setup.keyMasked, true); assert.equal(setup.reviewDefault, false); assert.equal(setup.consentDefault, false); assert.equal(setup.noRules, true);
   checks.push({ name: "provider-specific setup masks keys and requires explicit consent", ...setup });
   await screenshot("simple-light-ai");

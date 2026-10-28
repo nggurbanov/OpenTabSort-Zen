@@ -120,7 +120,7 @@ The Sine settings dialog is bounded by `min(720px, calc(100vw - 32px))`, with th
 
 The Advanced disclosure has a top divider and (28px) separation. Its retained preference rows stack into one column; the older rule grid reflows at (700px), placing domain chips below the rule name. The existing smaller action-row breakpoint is (520px).
 
-The operation row lives in the stable sidebar toolbar, directly before the tab-area titlebar and outside tab scrolling. It is (32px) high, with (2px 4px) padding and (4px) gaps; width follows the available sidebar. Status stays on one line with ellipsis, and contextual controls remain visible. Use a short meaningful visible label that fits the sidebar; the full recovery message remains accessible. If no sidebar anchor is available, a fallback overlay is bounded to `min(300px, calc(100vw - 16px))` near the wand.
+The primary control lives in the native pinned/unpinned tab divider beside Clear. It uses a 16px grouping SVG inside a 28px target, revealed on divider hover or keyboard focus. Busy state replaces it with a filled Stop square and keeps it visible. Animate a thin sweep along the native toolbarseparator, with a static line for reduced motion. Do not create a separate progress row or shift tab layout. While feedback exists, pin the existing section so Stop and inline Undo/Retry/Setup remain reachable during native scrolling; reset it when feedback is dismissed. The older compact row/overlay remains only a fallback when no native divider exists.
 
 The final native UI receipt reports no horizontal overflow in the primary form at a (446 × 984px) viewport. This is a verified fixture size, not a supported-device matrix.
 
@@ -146,19 +146,13 @@ The unconfigured state shows one engine selector. Remote setup adds the applicab
 
 A native `details/summary` control supplies keyboard interaction and open/closed semantics. Its summary is semibold with (14px) vertical padding. Content is hidden while collapsed; expensive editors initialize on first expansion. It returns to the primary view when setup is reopened.
 
-### Sidebar feedback and contextual actions
+### Divider feedback and contextual actions
 
-The row contains a polite live status paragraph, a small busy indicator, and real HTML buttons. Stop appears while work runs; activating it disables the control and reports “Stopping…”. Completion replaces Stop with a valid Undo or the relevant Retry/Setup recovery action, plus an icon close button. Labels identify the outcome concisely (`New setup`, `New space`, `Stopped`); complete recovery messages remain accessible. A changed connection or workspace offers Retry, and revoked sharing consent offers Setup. A successful primary run can say `300 tabs tidy`.
+Progress belongs to the existing separator line. Use the host foreground, transparent grouping button, subtle native hover fill, and a clear focus outline. The icon represents grouped rows; there is no wand, sparkle, rotating icon or artificial delay. Stop stays visible and disables only while acknowledging cancellation.
 
-Success feedback dismisses after five seconds, pausing during hover or keyboard focus. Dismissal removes only feedback, preserving a valid session Undo receipt. Recovery states offering Retry or Setup stay until dismissed. Escape dismisses completed feedback; it does not conceal an active Stop control.
+Show one contextual inline action after completion: Undo, or Setup/Retry recovery, with a small SVG dismiss control. These controls add no new row. Announce full progress/outcome text through a polite live status and expose descriptions/tooltips on controls. Successful feedback dismisses after five seconds, paused on action hover or focus; recovery remains until dismissed. Removing feedback preserves a valid session Undo receipt. Dispose listeners, observers and timers when the row is removed or the window unloads.
 
-Buttons inherit the host font and foreground, with transparent backgrounds, (24px) minimum height, and (2px) padding. Subtle foreground mixes indicate hover and press. A (2px) host-accent outline with (1px) offset marks keyboard focus; disabled Stop reduces opacity. The icon close button is (24px) square and has an explicit accessible name. These compact controls use HTML button keyboard semantics with browser-chrome styling.
-
-The essential operation CSS is embedded in the module and mirrored in `styles/operations.css`, so first feedback remains styled when Sine has not resolved the external sheet. Advanced action buttons retain their separate existing treatment.
-
-### Rule chips
-
-Advanced chips use the monospace token, an adaptive border, and a small kind badge. Domain chips use the host accent; title chips use the retained violet accent. Chip bodies are drag handles with grab/grabbing cursors. Dragging lowers opacity; drop indicators are inset lines. Remove buttons brighten on hover. These are saved-data editor controls, not primary setup elements.
+AI setup includes a default-on checkbox for distinct emoji prefixes. Preserve available existing icons, reserve icons used by untouched groups, replace duplicates locally, and keep plain text/Unicode intact. Disabling the preference affects the next applied sort; no AI request is restarted for this appearance change.
 
 ### Review dialogs
 
@@ -170,9 +164,9 @@ The busy state does not freeze the tab list. Background title updates and added 
 
 ### Motion
 
-The wand's existing click wiggle lasts (550ms); its thinking pulse repeats over (1.2s). Feedback enters over (120ms); its busy indicator rotates over (900ms). These indicate operation state without changing when AI work completes.
+Reveal the idle grouping icon over (140ms). While busy, sweep the existing divider line over (1600ms), preserving its dimensions; Stop itself stays still. No click wiggle, thinking pulse, rotating icon, progress panel entrance or artificial wait belongs to this native control.
 
-After native placement, a bounded FLIP translation settles at most (40) visible rows over (260ms), using `cubic-bezier(0.16, 1, 0.3, 1)`. It adds no artificial wait and does not animate hundreds of off-screen tabs. Independent translation on the native tab stack preserves Zen's transforms and inline styles. Scrolling, workspace change, a new run, or teardown cancels optional motion. Reduced motion skips placement effects and disables wand, feedback, spinner, and sort-highlight animations/transitions; Decision highlights also check the preference.
+After native placement, a bounded FLIP translation settles at most (40) visible rows over (260ms), using `cubic-bezier(0.16, 1, 0.3, 1)`. It adds no artificial wait and does not animate hundreds of off-screen tabs. Independent translation on the native tab stack preserves Zen's transforms and inline styles. Scrolling, workspace change, a new run, or teardown cancels optional motion. Reduced motion skips placement effects and disables divider movement, fallback feedback, spinner, and sort-highlight animations/transitions; Decision highlights also check the preference.
 
 ## Do's and Don'ts
 

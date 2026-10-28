@@ -5,6 +5,7 @@ import { getAIExistingBehavior, getAINewGroupBehavior, persistAIRules } from "./
 import { findExistingGroup, expandIfCollapsed, collapseGroup, applyGroupAppearance, applyGroupColor, findSafeInsertAnchor } from "./groups.mjs";
 import { normalizeCase, ensureUniqueGroupNames } from "./dedupe.mjs";
 import { capturePlacement, restorePlacement } from "./apply-placement.mjs";
+import { uniqueGroupLabels } from "./group-emoji.mjs";
 import { captureTidyMotion } from "./tidy-motion.mjs";
 
 const existingGroupNames = (workspaceId) => Array.from(document.querySelectorAll?.(
@@ -272,6 +273,14 @@ export const applyPass2 = (pass2Result, workspaceId, rules, options = {}) => {
   const motion = captureTidyMotion(workspaceId);
   try {
     const result = applyPass2Native(pass2Result, workspaceId, rules, options);
+    if (options.workspaceAI && typeof options.emojiGroupNames === "boolean") {
+      const failed = new Set(result.failedTabs.map((tab) => tab._tab));
+      const refs = [...pass2Result.assignedToExisting.map((entry) => entry.tabInfo), ...pass2Result.newGroups.flatMap((group) => group.tabs)];
+      const targets = [...new Set(refs.filter((tab) => !failed.has(tab._tab)).map((tab) => tab._tab.closest("tab-group")).filter(Boolean))];
+      const reserved = Array.from(document.querySelectorAll("tab-group")).filter((group) => isWorkspaceGroup(group, workspaceId) && !targets.includes(group));
+      const labels = uniqueGroupLabels(targets.map((group) => options.groupDisplayNames?.get(group.getAttribute("label")) || group.getAttribute("label")), reserved.map((group) => group.getAttribute("label")), options.emojiGroupNames);
+      targets.forEach((group, index) => group.setAttribute("label", labels[index]));
+    }
     motion.play();
     return result;
   } catch (error) {

@@ -5,7 +5,7 @@ import { CONFIG } from "../modules/config.mjs";
 import { showNotice, showSortProgress } from "../modules/operation-ui.mjs";
 
 // Observable chrome tree + deterministic timers exercise the real controller.
-const environment = (t, { sidebar = true, anchor = sidebar, stableHost = sidebar } = {}) => {
+const environment = (t, { sidebar = true, anchor = sidebar, stableHost = sidebar, inline = false } = {}) => {
   const previous = new Map(["window", "document"].map((key) => [key, globalThis[key]]));
   const observers = new Set(), timers = new Map(); let clock = 0, timerId = 0;
   const notify = (parent) => queueMicrotask(() => {
@@ -27,6 +27,8 @@ const environment = (t, { sidebar = true, anchor = sidebar, stableHost = sidebar
       this.classList = { add: (name) => { this.className += ` ${name}`; }, contains: (name) => this.className.split(/\s+/).includes(name) };
     }
     setAttribute(key, value) { this.attributes.set(key, String(value)); }
+    removeAttribute(key) { this.attributes.delete(key); }
+    toggleAttribute(key, force) { if (force ?? !this.hasAttribute(key)) this.setAttribute(key, ""); else this.removeAttribute(key); }
     getAttribute(key) { return this.attributes.get(key) ?? null; }
     hasAttribute(key) { return this.attributes.has(key); }
     get hidden() { return this.hasAttribute("hidden"); }
@@ -54,7 +56,7 @@ const environment = (t, { sidebar = true, anchor = sidebar, stableHost = sidebar
     getBoundingClientRect() { return this.rect || { left: 260, bottom: 100, width: 24, height: 24 }; }
   }
   const root = new Element("window"), head = new Element("head"), wrapper = new Element("vbox"), separator = new Element("hbox"), next = new Element("tabs");
-  separator.className = "pinned-tabs-container-separator";
+  separator.className = inline ? "pinned-tabs-container-separator" : "fallback-separator";
   const sidebarHost = new Element("toolbox"), tabArea = new Element("hbox");
   sidebarHost.id = "navigator-toolbox"; tabArea.id = "titlebar";
   sidebarHost.rect = { left: 0, right: 186, top: 0, bottom: 768, width: 186, height: 768 };
@@ -334,4 +336,57 @@ test("Retry feedback keeps native Escape dismissal and releases its controls on 
   assert.equal(env.window.listenerCount(), 0); assert.equal(env.observers.size, 0); assert.equal(env.timers.size, 0);
   retry.emit("click"); env.window.emit("unload");
   assert.equal(retried, 0); assert.equal(dismissed, 1);
+});
+
+test("native separator owns progress and its original button becomes persistent Stop", (t) => {
+  const env = environment(t, { inline: true }); let stops = 0;
+  const ui = showSortProgress({ onStop: () => stops++ });
+  assert.equal(env.row().parentElement, env.separator);
+  assert.equal(env.row().getAttribute("data-placement"), "separator");
+  assert.equal(env.wand.getAttribute("aria-label"), "Stop sorting");
+  assert.equal(env.wand.hasAttribute("data-zao-busy"), true);
+  assert.equal(env.sidebarHost.children.length, 1);
+  assert.equal(ui.stop(), true); assert.equal(ui.stop(), true); assert.equal(stops, 1);
+  assert.equal(env.wand.hasAttribute("disabled"), true);
+  ui.finish("Sorted", true);
+  assert.equal(env.wand.getAttribute("aria-label"), "Organize tabs");
+  assert.equal(env.wand.hasAttribute("disabled"), false);
+  assert.equal(env.separator.getAttribute("data-zao-state"), "finished");
+  ui.remove();
+  assert.equal(env.window._zaoSeparatorOperation, undefined);
+  assert.equal(env.separator.hasAttribute("data-zao-state"), false);
+});
+
+test("native separator keeps Retry explicit and consent recovery prefers Setup", (t) => {
+  const env = environment(t, { inline: true }); let retries = 0;
+  const ui = showSortProgress({ onRetry: () => retries++, onSetup() {} });
+  ui.retryAvailable(); ui.finish("New setup");
+  const retry = env.row().querySelector('[data-action="retry"]');
+  assert.equal(retry.hidden, false); retry.emit("click"); retry.emit("click");
+  assert.equal(retries, 1);
+  ui.setupAvailable();
+  assert.equal(retry.hidden, true);
+  assert.equal(env.row().querySelector('[data-action="setup"]').hidden, false);
+  env.advance(10000); assert.equal(env.row().isConnected, true);
+  ui.remove(); assert.equal(env.observers.size, 0); assert.equal(env.timers.size, 0);
+});
+
+test("native Undo removal releases operation callbacks and restores the button", async (t) => {
+  const env = environment(t, { inline: true });
+  const ui = showSortProgress({ onUndo() {} }); ui.finish("Sorted", true);
+  env.row().remove(); await Promise.resolve();
+  assert.equal(env.window._zaoSeparatorOperation, undefined);
+  assert.equal(env.wand.hasAttribute("data-zao-busy"), false);
+  assert.equal(env.observers.size, 0); assert.equal(env.timers.size, 0);
+});
+
+test("native Retry stays usable when an empty workspace produces no replacement operation", async (t) => {
+  const env = environment(t, { inline: true }); let retries = 0;
+  const ui = showSortProgress({ onRetry: async () => retries++ });
+  ui.retryAvailable(); ui.finish("Nothing to organize");
+  const retry = env.row().querySelector('[data-action="retry"]');
+  retry.emit("click"); retry.emit("click"); assert.equal(retries, 1);
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(retry.disabled, false); retry.emit("click"); assert.equal(retries, 2);
+  ui.remove();
 });

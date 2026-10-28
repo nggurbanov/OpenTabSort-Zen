@@ -121,7 +121,7 @@ const groupExistingByTarget = (assignedToExisting) => {
  *
  * @returns {Promise<Plan | null>} The filtered plan to apply, or null on cancel.
  */
-export const showPreviewModal = ({ plan, existingNames, onReassignToNew, onAssignToPlanned, onAssignToExisting, signal }) =>
+export const showPreviewModal = ({ plan, existingNames, onReassignToNew, onAssignToPlanned, onAssignToExisting, signal, formatGroupName = (name) => name }) =>
   new Promise((resolve) => {
     let currentPlan = clonePlan(plan);
     let reassigning = false;
@@ -307,7 +307,7 @@ export const showPreviewModal = ({ plan, existingNames, onReassignToNew, onAssig
       const prefix = kind === "existing" ? "→ " : "";
       head.appendChild(h("span", {
         class: "zao-preview-group-name",
-        text: `${prefix}${g.name} (${g.tabs.length})`,
+        text: `${prefix}${formatGroupName(g.name)} (${g.tabs.length})`,
       }));
       head.appendChild(h("span", {
         class: "zao-preview-group-state",

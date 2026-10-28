@@ -2,9 +2,9 @@
 
 Hundreds of tabs, one button. OpenTabSort uses AI to organize the active [Zen Browser](https://zen-browser.app) workspace into groups.
 
-Set up an AI connection once, then click the wand. AI works out the groups from your tabs. A quiet sidebar row shows progress and **Stop**; **Undo** appears when sorting finishes.
+Set up an AI connection once, then use **Organize tabs**. AI works out the groups from your tabs. The native divider animates while AI works. Its grouping button becomes **Stop**; **Undo** appears beside it when sorting finishes.
 
-Development version: **2.0.5, planned / unreleased**. Based on the MIT-licensed [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand).
+Development version: **2.0.6, planned / unreleased**. Based on the MIT-licensed [Zen Tab Wand](https://github.com/flantig/Zen-Tab-Wand).
 
 ## Install
 
@@ -12,13 +12,15 @@ In Zen → Sine, use **Install from GitHub** with `nggurbanov/OpenTabSort-Zen`. 
 
 ## Start organizing
 
-1. Click the **wand** in the workspace sidebar. If AI is not configured, it opens **AI setup**.
+1. Click the **Organize tabs** button in the workspace sidebar. If AI is not configured, it opens **AI setup**.
 2. Choose an engine and fill in its connection settings. For a remote provider, enable the explicit tab-metadata consent checkbox.
-3. Click the wand again. AI creates groups for the active workspace and places your tabs in them.
+3. Click Organize tabs again. AI creates groups for the active workspace and places your tabs in them.
+
+**Use unique emoji in group names** is on by default. Each sorted group gets a distinct emoji; turn it off for plain names on the next sort. Emoji allocation is local and does not add AI requests.
 
 **Review groups before applying** is optional and off by default. Enable it in AI setup if you want to inspect the proposed groups first.
 
-Pinned and essential tabs, tabs in other workspaces, and excluded domains stay in place. Saved rules and manually maintained categories are available in **Advanced & saved data**; the everyday wand does not require them or save new rules.
+Pinned and essential tabs, tabs in other workspaces, and excluded domains stay in place. Saved rules and manually maintained categories are available in **Advanced & saved data**; the everyday action does not require them or save new rules.
 
 ## Choose an engine
 
@@ -37,13 +39,13 @@ For Ollama, install it from [ollama.com](https://ollama.com), run `ollama pull q
 
 ## Stop, review, and undo
 
-**Stop** interrupts AI work. Every engine on the everyday wand plans before moving tabs, including Decision models, so stopping during planning leaves the layout unchanged. Advanced Decision sorting retains its progressive batch behavior.
+**Stop** interrupts AI work. Every engine on the everyday action plans before moving tabs, including Decision models, so stopping during planning leaves the layout unchanged. Advanced Decision sorting retains its progressive batch behavior.
 
 **Undo** restores the layout immediately before the groups were applied, including native membership, order, appearance, and collapsed state. Tabs and manual edits made while AI was working remain part of that baseline. Later background title updates do not invalidate Undo; conflicting later layout edits do. Successful feedback disappears after five seconds, pausing while hovered or focused; dismissing it retains the valid session Undo receipt. Failed or unresolved classifications keep their previous membership.
 
 Keep browsing while AI works on the initial tab snapshot. Background title updates and opened or closed tabs do not cancel the whole sort. New tabs stay outside that operation; navigated, pinned, manually moved or regrouped tabs and renamed groups are protected when the plan is applied.
 
-Switching workspaces or changing the selected AI setup stops pending work and offers **Retry**. Revoking metadata consent offers **Setup**. The compact row stays in the stable native sidebar toolbar with short status text and a full accessible message. Visible tabs settle into place with a brief animation that respects reduced motion and adds no artificial waiting.
+Switching workspaces or changing the selected AI setup stops pending work and offers **Retry**. Revoking metadata consent offers **Setup**. Controls live in the native divider beside Clear. The grouping icon appears on hover or keyboard focus, and stays visible as Stop while busy. The divider stays reachable during an operation and while its recovery/Undo actions are shown. Progress uses the existing line rather than a separate panel; full messages remain accessible and in tooltips. Visible tabs settle into place with a brief animation that respects reduced motion and adds no artificial waiting.
 
 ## Privacy
 
@@ -58,6 +60,7 @@ Built-in local AI and advanced sorting may fetch small page snippets using brows
 - [Advanced tools and saved data](docs/advanced.md)
 - [Architecture](docs/architecture.md)
 - [Development and real Zen checks](docs/e2e-zen.md)
+- [Native divider and unique emoji verification](docs/separator-verification.md)
 - [Browsing during sorting and Decision verification](docs/live-sort-verification.md)
 - [Tidy interaction and configured-model verification](docs/tidy-verification.md)
 - [2.0.0 overhaul verification and measurement limits](docs/overhaul-verification.md)

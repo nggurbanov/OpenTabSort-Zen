@@ -1,3 +1,4 @@
+import { createSeparatorProgress } from "./separator-progress.mjs";
 import { CONFIG, h } from "./config.mjs";
 
 // Browser-chrome feedback must work before any external stylesheet resolves.
@@ -139,6 +140,7 @@ const addClose = (row, callback) => {
   close.appendChild(icon("m4 4 8 8m0-8-8 8")); return close;
 };
 export const showNotice = (message) => {
+  if (window._zaoSeparatorOperation) return window._zaoSeparatorOperation.notice(message);
   // A duplicate-click notice should not replace the active Stop control.
   const progress = document.querySelector(".zao-sort-progress");
   if (progress?.getAttribute("data-state") === "busy") return;
@@ -152,6 +154,8 @@ export const showNotice = (message) => {
   return { remove: row.remove };
 };
 export const showSortProgress = ({ onStop, onUndo, onDismiss, onSetup, onRetry, stage = "Preparing tabs…", className = "" } = {}) => {
+  const separator = createSeparatorProgress({ onStop, onUndo, onDismiss, onSetup, onRetry, stage, className });
+  if (separator) return separator;
   const restoreFocus = Boolean(document.activeElement?.closest?.(".zao-operation"));
   const row = createRow(`zao-sort-progress ${className}`, "Tab sorting", stage);
   progressRows.set(row.root, { ...row, preserveUndo: Boolean(onUndo) });

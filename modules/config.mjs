@@ -13,7 +13,7 @@
 export const LOG = "[OpenTabSort]";
 
 // +tag.N suffix (dev builds only) flags a stale module-cache load in the Browser Console.
-export const BUILD_VERSION = "2.0.5";
+export const BUILD_VERSION = "2.0.6";
 
 export const CONFIG = {
   MAX_INIT_CHECKS: 50,
@@ -47,6 +47,7 @@ export const CONFIG = {
   // AI_ENGINE_PREF: off/local/ollama/openai/gemini/custom/jev; remote engines require consent.
   AI_ENGINE_PREF: "extensions.zen-auto-organize.ai-engine",
   SETUP_REQUEST_PREF: "extensions.zen-auto-organize.setup-request",
+  AI_GROUP_EMOJI_PREF: "extensions.zen-auto-organize.ai-group-emoji",
   AI_REVIEW_PREF: "extensions.zen-auto-organize.ai-review-before-apply",
   AI_SORT_MODE_PREF: "extensions.zen-auto-organize.ai-sort-mode",
   AI_PROVIDER_CONSENT_PREF: "extensions.zen-auto-organize.ai-provider-consent",

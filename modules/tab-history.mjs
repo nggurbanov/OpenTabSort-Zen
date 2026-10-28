@@ -101,6 +101,7 @@ export const undoLastSort = () => {
     const appearances = new Map(original.filter((entry) => entry.group).map((entry) => [entry.group, entry.appearance]));
     for (const [old, group] of restoredGroups) {
       const appearance = appearances.get(old);
+      group.setAttribute("label", appearance.label);
       group.color = appearance.color;
       group.className = appearance.className;
       if (appearance.style === null) group.removeAttribute("style");

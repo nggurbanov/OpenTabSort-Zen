@@ -45,3 +45,5 @@ Use `node scripts/e2e-zen.mjs --help` for supported options. `--provider real` u
 The runners remove their lab profiles and terminate their own browser/server processes in cleanup. Receipts and screenshots outside the repository are local evidence artifacts and should be copied deliberately if they need long-term retention.
 
 See [the browsing-during-sort record](live-sort-verification.md) for the 2.0.5 checks and [the overhaul verification record](overhaul-verification.md) for earlier dated results and their limits.
+
+`npm run e2e:separator` exercises the native hover/grouping/Stop control, unchanged divider height, scroll reachability, reduced motion, local unique labels, repeat-sort stability and plain-name Undo in a disposable profile. Use `SEPARATOR_NO_SCREENSHOTS=1` for a functional-only run.

@@ -36,7 +36,7 @@ try {
     win.fetch = (url, init) => {
       if (String(url).includes("127.0.0.1:${provider.port}")) {
         win.__qaCalls++;
-        if (win.__qaMode === "stop" && win.__qaCalls === 1) [...win.document.querySelectorAll(".zao-sort-progress button")].find((node) => node.textContent === "Stop").click();
+        if (win.__qaMode === "stop" && win.__qaCalls === 1) win.gZenWorkspaces.activeWorkspaceElement.querySelector("#tab-wand-button").doCommand();
         if (win.__qaMode === "settings" && win.__qaCalls === 1) Services.prefs.setStringPref("extensions.zen-auto-organize.skip-domains-json", '["work.localhost"]');
       }
       return nativeFetch(url, init);
@@ -66,14 +66,14 @@ try {
       const done = arguments[arguments.length - 1], win = Services.wm.getMostRecentWindow("navigator:browser");
       Promise.allSettled(win.document.getAnimations().filter((effect) => effect.effect?.target?.classList?.contains("tab-stack"))
         .map((effect) => effect.finished)).then(() => {
-        const row = win.document.querySelector(".zao-sort-progress"), status = row.querySelector("[role=status]"), rect = row.getBoundingClientRect();
+        const row = win.document.querySelector(".zao-sort-progress"), status = row.querySelector("[role=status]"), rect = row.parentElement.getBoundingClientRect();
         done({ height: rect.height, width: rect.width, y: rect.top, bottom: rect.bottom,
           visible: rect.top >= 0 && rect.bottom <= win.innerHeight, placement: row.dataset.placement, label: status.textContent,
-          overflow: row.scrollWidth > row.clientWidth, statusOverflow: status.scrollWidth > status.clientWidth });
+          overflow: row.parentElement.scrollWidth > row.parentElement.clientWidth });
       });
     `);
-    assert.equal(geometry.placement, "sidebar"); assert.equal(geometry.height, 32); assert.equal(geometry.visible, true);
-    assert.equal(geometry.overflow, false); assert.equal(geometry.statusOverflow, false);
+    assert.equal(geometry.placement, "separator"); assert.ok(geometry.height > 0 && geometry.height <= 32); assert.equal(geometry.visible, true);
+    assert.equal(geometry.overflow, false);
     await writeFile(process.env.OPERATIONS_QA_SCREENSHOT, Buffer.from(await client.command("WebDriver:TakeScreenshot", {}), "base64"));
     await writeFile(process.env.OPERATIONS_QA_SCREENSHOT + ".json", JSON.stringify(geometry, null, 2));
   }

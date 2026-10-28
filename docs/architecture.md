@@ -6,7 +6,7 @@ OpenTabSort runs as a Sine userChrome mod inside Zen. The main action organizes 
 
 `auto-organize.uc.mjs` detects the current document before importing its runtime:
 
-- Browser chrome loads `browser-runtime.mjs` for the wand, workspace hooks, styling, and tab menus.
+- Browser chrome loads `browser-runtime.mjs` for Organize tabs, workspace hooks, styling, and tab menus.
 - Preferences loads `prefs-ui.mjs` and the small `simple-settings.mjs` connection form.
 - Other documents do not load either runtime.
 
@@ -14,11 +14,11 @@ AI engines, previews, the legacy orchestrator, and the advanced rule/icon editor
 
 ## Everyday action
 
-`click-handler.mjs` owns the primary wand flow:
+`click-handler.mjs` owns the primary action flow:
 
 1. Check the chosen engine, connection readiness, and required consent. An unconfigured click opens setup without an AI request.
 2. Capture active-workspace native tab references, their initial metadata/membership/order, and relevant settings. Filter excluded domains without moving them; new tabs do not join this operation.
-3. Start a cancellable `sort-session.mjs` operation with compact sidebar feedback.
+3. Start a cancellable `sort-session.mjs` operation with native divider progress and a grouping/Stop control.
 4. Produce a transient plan using the selected engine.
 5. Optionally review the plan when `ai-review-before-apply` is enabled; it defaults to false.
 6. Validate the returned plan against original requested references, reconcile it against current eligible native tabs, then validate the filtered plan. Protect intervening navigation and manual layout edits without cancelling unaffected assignments.
@@ -70,7 +70,7 @@ Every primary engine plans before applying, including Decision. Stop during plan
 
 `apply-placement.mjs` handles native move failures and attempts to restore the affected placement. `apply-plan.mjs` is shared by the primary and advanced orchestrators. Sorting moves original tab nodes; it does not close and recreate their browsing state.
 
-`operation-ui.mjs` injects its essential styles directly, so first feedback does not depend on Sine resolving an external sheet. The default surface is a transparent 32px row in the stable sidebar toolbar, outside the scrolling tabs; a bounded overlay is used only when no suitable sidebar anchor exists. It shows Stop while busy and contextual Undo, Retry or Setup afterward. Workspace/setup changes and Stop have concise distinct labels; revoked sharing consent offers Setup. Successful rows dismiss after five seconds, pausing while hovered or focused. Recovery rows offering Retry or Setup remain until dismissed. Removing feedback cleans up timers/listeners without deleting the Undo receipt.
+`operation-ui.mjs` delegates ordinary sorting to `separator-progress.mjs`: the native divider is the progress surface, its grouping icon becomes Stop, and completion/recovery actions stay inline. The native section is held reachable while feedback exists, without adding a row on start. When no divider is available, the older compact row/overlay and its embedded essential stylesheet remain a fallback. Successful feedback dismisses after five seconds, paused on hover/focus; recovery persists. Cleanup releases timers/listeners/observers without deleting the Undo receipt.
 
 `tidy-motion.mjs` captures only eligible visible rows before native placement, then plays a bounded FLIP translation after placement: at most 40 rows, 260ms, no awaited delay. It animates independent translation on the tab stack where available, preserving Zen's transforms and inline styles. Reduced motion, scrolling or workspace changes, existing conflicting translation, teardown, and another run cancel or skip the optional effect. Placement correctness is independent of animation support.
 
@@ -114,3 +114,9 @@ The extracted host-theme tokens and component states are documented in [DESIGN.m
 ## Verification
 
 Use `npm run check` for manifest/preference/privacy validation and regression tests. [Real Zen checks](e2e-zen.md) exercise Sine-loaded native behavior in disposable profiles. [The 2.0.0 overhaul record](overhaul-verification.md) preserves the earlier fixture/import/transfer measurements. [The Tidy follow-up](tidy-verification.md) records native sidebar/motion behavior, one-request grouping, and the bounded configured-model output-budget probe. [The 2.0.3 recovery record](output-recovery-verification.md) covers forced output limits and the configured-model replay. [The 2.0.5 browsing record](live-sort-verification.md) separates primary snapshot/Decision evidence from the retained Advanced behavior. These checks do not establish long-session RSS or general model quality.
+
+## Divider control and label presentation
+
+`separator-progress.mjs` owns the ordinary operation surface; `operation-ui.mjs` retains its compact fallback for missing native separators. The native command invokes Stop while planning and otherwise starts sorting. Divider hover/focus reveals the grouping icon, while busy Stop remains visible. A thin native-line sweep respects reduced motion. The pinned section stays reachable while feedback is present, without moving native tabs or adding a new row. Resize observation updates its sticky offset; native tab-move hooks do not force repeated geometry reads.
+
+`group-emoji.mjs` resolves unambiguous emoji variants to original destination names before reconciliation. Label decoration happens after successful native placement and before recording Undo. Existing/manual groups outside the operation reserve their icons. The default-on preference is read again before apply and is excluded from primary request invalidation. Optional preview supplies preferred display labels; current manual icon reservations still win. No provider request is added.

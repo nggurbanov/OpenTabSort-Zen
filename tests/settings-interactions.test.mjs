@@ -143,6 +143,10 @@ test("primary settings contain only AI setup and leave legacy data unloaded", as
   assert.equal(engine.value, "off");
   engine.value = "openai"; engine.emit("change");
   assert.equal(primary.querySelector(`input[data-pref="${CONFIG.AI_OPENAI_API_KEY_PREF}"]`).type, "password");
+  assert.equal(primary.querySelector(`input[data-pref="${CONFIG.AI_GROUP_EMOJI_PREF}"]`).checked, true);
+  const emoji = primary.querySelector(`input[data-pref="${CONFIG.AI_GROUP_EMOJI_PREF}"]`);
+  emoji.checked = false; emoji.emit("change");
+  assert.equal(env.values.get(CONFIG.AI_GROUP_EMOJI_PREF), false);
   assert.equal(primary.querySelector(`input[data-pref="${CONFIG.AI_REVIEW_PREF}"]`).checked, false);
   assert.equal(primary.querySelector(`input[data-pref="${CONFIG.AI_PROVIDER_CONSENT_PREF}"]`).checked, false);
   assert.equal(env.values.get(CONFIG.RULES_PREF), saved);

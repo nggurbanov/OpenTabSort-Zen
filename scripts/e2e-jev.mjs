@@ -65,7 +65,7 @@ try {
       if (String(url) !== "http://127.0.0.1:${port}/v1/systemone") return win.__jevNativeFetch(url, init);
       win.__jevRequests++;
       if (win.__jevMode === "stop" && win.__jevRequests === 2) {
-        [...win.document.querySelectorAll(".zao-jev-progress button")].find((button) => button.textContent === "Stop").click();
+        win.gZenWorkspaces.activeWorkspaceElement.querySelector("#tab-wand-button").doCommand();
       }
       if (win.__jevMode === "edit" && win.__jevRequests === 2) {
         const tab = [...win.gBrowser.tabs].find((tab) => !tab.pinned && tab.closest("tab-group"));
@@ -175,6 +175,7 @@ try {
   const runPrimary = async ({ mode = "normal", review = false, accept = true } = {}) => client.executeAsync(`
     const done = arguments[arguments.length - 1]; const win = Services.wm.getMostRecentWindow("navigator:browser");
     Services.prefs.setBoolPref("extensions.zen-auto-organize.ai-review-before-apply", ${review});
+    Services.prefs.setBoolPref("extensions.zen-auto-organize.ai-group-emoji", false);
     win.__jevMode = "primary"; win.__jevRequests = 0;
     const before = win.__jevState();
     const saved = Services.prefs.getStringPref("extensions.zen-auto-organize.ai-jev-categories-json", "{}");
@@ -184,7 +185,7 @@ try {
       if (String(url) !== "http://127.0.0.1:${port}/v1/systemone") return win.__jevNativeFetch(url, init);
       win.__jevRequests++;
       if (${JSON.stringify(mode)} === "stop" && win.__jevRequests === 2) {
-        win.document.querySelector('.zao-sort-progress [data-action="stop"]')?.click();
+        win.gZenWorkspaces.activeWorkspaceElement.querySelector("#tab-wand-button").doCommand();
       }
       if (${JSON.stringify(mode)} === "auth" && win.__jevRequests === 2) return new win.Response("Unauthorized", { status: 401 });
       if (${JSON.stringify(mode)} === "title" && win.__jevRequests === 2) {
