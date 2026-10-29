@@ -51,7 +51,7 @@ const fakeProviderHandler = (calls, beforeFakeResponse) => async (request, respo
       name: `${name} AI`, description: `Tabs about ${name.toLowerCase()} tasks and projects, excluding other workspace topics.`,
       tabs: lines.filter((line) => familyForPromptText(line.host, line.title) === name).map((line) => Number(line.index)),
     })).filter((group) => group.tabs.length), unresolved: [] };
-  } else if (content.includes("Suggest 1 to 10 distinct, useful categories")) {
+  } else if ((content.includes("Suggest 1 to 10 distinct, useful categories") || content.includes("Suggest between 1 and"))) {
     assignments = { categories: GOLD_FAMILIES.map((name) => ({ name: `${name} AI`, description: `Tabs about ${name.toLowerCase()} tasks and projects, excluding other workspace topics.`, examples: [] })) };
   } else if (content.startsWith("AI WORKSPACE CLASSIFICATION")) {
     const categories = JSON.parse(content.split("Categories JSON:\n")[1].split("\nTabs JSON:")[0]);

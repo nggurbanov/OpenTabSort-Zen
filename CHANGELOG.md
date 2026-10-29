@@ -1,5 +1,14 @@
 # Changelog
 
+## Local changes — Unreleased
+
+- Add a hover/focus folder toggle beside sorting: collapse all groups/folders in the active workspace, then expand all. Mixed states collapse first; the next-action icon/label tracks manual changes.
+
+- Keep named tab-group headers visible while Zia suggests an icon/name in the background; its skeleton overlay no longer obscures existing expanded or collapsed group titles.
+
+- Group primary Chat/Ollama workspaces by specific projects and tasks rather than targeting 3–7 broad folders. Remove the fixed 10-category ceiling from primary planning and recovery; treat old groups as weak context.
+- Reassess destinations of 30 or more tabs once before applying. Split by meaning when supported; retain coherent large projects. Stop cancels review, failures leave the layout intact, and small groups require no extra requests.
+
 ## 2.0.6 — Unreleased
 
 - Replace the magic wand with a grouping icon that appears on divider hover or keyboard focus, like native Clear. During sorting the same button becomes a persistent Stop.

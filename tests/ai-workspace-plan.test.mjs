@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { planAIWorkspace, FAST_WORKSPACE_PROMPT_LIMIT, FAST_WORKSPACE_TAB_LIMIT, RECOVERY_BATCH_SIZE, RECOVERY_TIMEOUT_MS, recoveryRequestLimit } from "../modules/ai-workspace-plan.mjs";
+import { planAIWorkspace as planWithReview, FAST_WORKSPACE_PROMPT_LIMIT, FAST_WORKSPACE_TAB_LIMIT, RECOVERY_BATCH_SIZE, RECOVERY_TIMEOUT_MS, recoveryRequestLimit } from "../modules/ai-workspace-plan.mjs";
 import { PROVIDER_TAB_BATCH_SIZE } from "../modules/provider-batching.mjs";
 import { CATEGORY_INPUT_LIMIT } from "../modules/jev-categories.mjs";
 import { validateAIPlan } from "../modules/sort-plan.mjs";
 import { beginSortSession } from "../modules/sort-session.mjs";
 
+const planAIWorkspace = (tabs, options) => planWithReview(tabs, { refineLargeGroups: false, ...options });
 const settingsFor = (provider) => ({
   provider, consentToSendData: provider !== "ollama",
   endpoint: provider === "ollama" ? "http://localhost:11434" : "https://api.example.test/v1",
@@ -333,8 +334,8 @@ test("300 tab identities are grouped with exactly one compact workspace-wide req
       assert.ok(isFastGrouping(prompt));
       assert.ok(Buffer.byteLength(prompt) <= FAST_WORKSPACE_PROMPT_LIMIT);
       assert.deepEqual(classificationRows(prompt).map((row) => row.index), input.map((_, index) => index));
-      assert.match(prompt, /Reuse existing meaningful group names verbatim/);
-      assert.match(prompt, /1 to 3 words/);
+      assert.match(prompt, /Existing groups are weak context only/);
+      assert.match(prompt, /1 to 4 words/);
       return fastGroups(prompt, (row) => row.index % 2);
     },
   });
@@ -946,4 +947,142 @@ test("Mercury's larger budget still preserves typed-limit recovery and native id
   assert.equal(calls, 5); assert.equal(plan.failed, undefined);
   assert.equal(new Set(allPlanned(plan)).size, input.length);
   assert.doesNotThrow(() => validateAIPlan(plan, input));
+});
+
+const specificOptions = { engine: "openai", settings: settingsFor("openai") };
+const oneGroup = (count, name = "Infrastructure") => ({ groups: [{ name, description: "Workspace task", tabs: Array.from({length: count}, (_, i) => i) }], unresolved: [] });
+
+test("primary workspace accepts more than ten specific groups without changing legacy saved categories", async (t) => {
+  install(t);
+  const input = makeTabs(26);
+  const plan = await planWithReview(input, { ...specificOptions, generate: async prompt => {
+    assert.match(prompt, /Existing groups are weak context only/);
+    return { groups: Array.from({length: 13}, (_, i) => ({ name: "Project " + i, description: "Distinct project " + i, tabs: [i*2, i*2+1] })), unresolved: [] };
+  }});
+  assert.equal(plan.newGroups.length, 13);
+  assert.equal(plan.failed, undefined);
+  const { parseCategories } = await import("../modules/jev-categories.mjs");
+  assert.throws(() => parseCategories(plan.categories), /1 and 10/);
+  validateAIPlan(plan, input);
+});
+
+test("large mixed GitHub group is reassessed without its old label and split by project", async (t) => {
+  install(t);
+  const projects = ["xray-core", "zen-mods", "agent-memory"];
+  const input = makeTabs(60).map((tab, i) => ({ ...tab, currentGroup: "Infrastructure", title: projects[i%3] + " issue " + i, url: "https://github.com/team/" + projects[i%3] + "/issues/" + i }));
+  const original = structuredClone(input);
+  let calls = 0;
+  const plan = await planWithReview(input, { ...specificOptions, generate: async prompt => {
+    if (++calls === 1) return oneGroup(input.length);
+    assert.match(prompt, /Existing groups JSON:\n\[\]/);
+    assert.ok(classificationRows(prompt).every(row => row.group === null));
+    return { groups: projects.map(project => ({ name: project, description: "Work on " + project, tabs: classificationRows(prompt).filter(row => row.path.includes("/" + project + "/")).map(row => row.index) })), unresolved: [] };
+  }});
+  assert.equal(calls, 2);
+  assert.deepEqual(plan.newGroups.map(group => [group.name, group.tabs.length]), projects.map(name => [name,20]));
+  assert.equal(plan.assignedToExisting.length, 0);
+  assert.equal(new Set(plan.newGroups.flatMap(group => group.tabs)).size, 60);
+  assert.deepEqual(input, original);
+  validateAIPlan(plan, input);
+});
+
+test("a large coherent project stays together after exactly one review", async (t) => {
+  install(t);
+  const input = makeTabs(60);
+  let calls = 0;
+  const plan = await planWithReview(input, { ...specificOptions, generate: async () => { calls++; return oneGroup(60, "Xray migration"); }});
+  assert.equal(calls, 2);
+  assert.equal(plan.newGroups.length, 1);
+  assert.deepEqual(plan.newGroups[0].tabs, input);
+});
+
+test("small groups need no additional requests", async (t) => {
+  install(t);
+  let calls = 0;
+  const input = makeTabs(29);
+  const plan = await planWithReview(input, { ...specificOptions, generate: async () => { calls++; return oneGroup(29); }});
+  assert.equal(calls, 1);
+  assert.equal(plan.newGroups[0].tabs.length,29);
+});
+
+test("review failure discards even a successful initial grouping before native apply", async (t) => {
+  install(t);
+  const input = makeTabs(60);
+  let calls = 0;
+  const plan = await planWithReview(input, { ...specificOptions, generate: async () => {
+    if (++calls === 1) return oneGroup(60);
+    throw new Error("Review unavailable");
+  }});
+  assert.equal(calls, 2);
+  assert.deepEqual(plan.newGroups, []);
+  assert.deepEqual(plan.assignedToExisting, []);
+  assert.deepEqual(plan.unresolved, input);
+  assert.match(plan.failed, /Review unavailable/);
+});
+
+test("Stop aborts semantic review without producing an apply plan", async (t) => {
+  install(t);
+  const controller = new AbortController();
+  let calls = 0, entered;
+  const started = new Promise(resolve => entered = resolve);
+  const pending = planWithReview(makeTabs(60), { ...specificOptions, signal: controller.signal, generate: async (_prompt, signal) => {
+    if (++calls === 1) return oneGroup(60);
+    entered();
+    return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(new DOMException("Stopped", "AbortError")), {once:true}));
+  }});
+  await started; controller.abort();
+  await assert.rejects(pending, {name:"AbortError"});
+  assert.equal(calls, 2);
+});
+
+test("larger inventory taxonomy supports thirteen task categories", async (t) => {
+  install(t);
+  const input = makeTabs(312);
+  const many = Array.from({length:13}, (_, i) => ({name:"Project "+i,description:"Distinct task "+i}));
+  let taxonomyCalls = 0;
+  const plan = await planWithReview(input, { ...specificOptions, generate: async prompt => {
+    if (!isClassification(prompt)) { taxonomyCalls++; return {categories:many}; }
+    return assignments(prompt, row => "c"+(Number(row.id.slice(1))%13));
+  }});
+  assert.equal(taxonomyCalls,1);
+  assert.equal(plan.newGroups.length,13);
+  assert.ok(plan.newGroups.every(group => group.tabs.length === 24));
+  validateAIPlan(plan,input);
+});
+
+test("large-group reviews share a deadline and leave all tabs unchanged on timeout", async (t) => {
+  install(t);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let entered, calls = 0;
+  const started = new Promise(resolve => entered = resolve);
+  const input = makeTabs(60);
+  const pending = planWithReview(input, { ...specificOptions, generate: async (_prompt, signal) => {
+    if (++calls === 1) return oneGroup(60);
+    entered();
+    return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(new DOMException("Deadline", "AbortError")), {once:true}));
+  }});
+  await started; t.mock.timers.tick(RECOVERY_TIMEOUT_MS);
+  const plan = await pending;
+  assert.deepEqual(plan.newGroups, []);
+  assert.deepEqual(plan.unresolved, input);
+  assert.match(plan.failed, /timed out/);
+});
+
+test("semantic review retains untouched small groups, unresolved tabs and original native references", async (t) => {
+  install(t);
+  const input = makeTabs(35);
+  input[0].currentGroup = "Project docs";
+  let calls = 0;
+  const plan = await planWithReview(input, { ...specificOptions, generate: async () => {
+    if (++calls === 1) return { groups: [
+      {name:"Infrastructure", description:"Mixed projects",tabs:Array.from({length:30},(_,i)=>i)},
+      {name:"Project docs", description:"Documentation",tabs:[30,31,32,33]},
+    ], unresolved:[34] };
+    return { groups:[{name:"Xray",description:"VPN task",tabs:Array.from({length:29},(_,i)=>i)}],unresolved:[29] };
+  }});
+  assert.equal(calls,2);
+  assert.deepEqual(plan.unresolved,[input[29],input[34]]);
+  assert.deepEqual(plan.assignedToExisting.map(entry=>entry.tabInfo),input.slice(30,34));
+  assert.deepEqual(plan.newGroups[0].tabs,input.slice(0,29));
+  validateAIPlan(plan,input);
 });

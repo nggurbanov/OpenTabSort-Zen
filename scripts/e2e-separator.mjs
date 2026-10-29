@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createLabProfile, findDefaultSineProfile, removeLabProfile, scenarioPrefs, writeUserPrefs } from "./zen-e2e-profile.mjs";
 import { startFixturePageServer, startProviderServer } from "./zen-e2e-servers.mjs";
-import { createSemanticFixture } from "./zen-e2e-fixtures.mjs";
+import { createSemanticFixture, GOLD_FAMILIES } from "./zen-e2e-fixtures.mjs";
 import { MarionetteClient, reserveTcpPort } from "./zen-e2e-marionette.mjs";
 import { assertConnectedProfile, launchZen, stopZen, waitForZenReady, prepareTabs, waitForWorkspaceUrls } from "./zen-e2e-driver.mjs";
 import { groupEmoji, stripGroupEmoji } from "../modules/group-emoji.mjs";
@@ -14,6 +14,7 @@ const output = process.env.SEPARATOR_QA_OUTPUT || "/tmp/opentabsort-separator-qa
 await mkdir(output, { recursive: true });
 let lab, zen, client, pages, provider, gate, release;
 const receipt = {};
+let groupingRequests = 0;
 const chrome = (source) => client.execute('const win = Services.wm.getMostRecentWindow("navigator:browser");\n' + source);
 const wait = (expression) => client.executeAsync(`
   const done = arguments[arguments.length - 1], win = Services.wm.getMostRecentWindow("navigator:browser"), started = Date.now();
@@ -36,16 +37,32 @@ const state = () => chrome(`
 `);
 const pointer = async (x, y) => { await client.command("WebDriver:PerformActions", { actions: [{ type: "pointer", id: "mouse", parameters: { pointerType: "mouse" }, actions: [{ type: "pointerMove", duration: 0, origin: "viewport", x: Math.round(x), y: Math.round(y) }] }] }); await pause(); };
 const clickSort = async () => {
+  const idle = (await state()).button;
+  await pointer(idle.x + 5, idle.y + 10);
   const rect = (await state()).button;
   await pointer(rect.x + rect.width/2, rect.y + rect.height/2);
+  assert.equal(await chrome(`return win.document.elementFromPoint(${rect.x + rect.width/2}, ${rect.y + rect.height/2})?.closest("toolbarbutton")?.id;`), "tab-wand-button", "sort pointer must hit the visible sorting control");
   await client.command("WebDriver:PerformActions", {actions:[{type:"pointer",id:"mouse",parameters:{pointerType:"mouse"},actions:[{type:"pointerDown",button:0},{type:"pointerUp",button:0}]}]});
 };
 const labels = () => chrome('return [...win.document.querySelectorAll("tab-group")].filter(g=>g.isConnected && g.querySelector("tab")).map(g=>g.getAttribute("label"));');
 try {
   pages = await startFixturePageServer();
-  provider = await startProviderServer("fake", { beforeFakeResponse: async ({ response }) => {
-    if (!gate) return false; const current = gate; gate = null; current();
-    await new Promise((resolve) => release = resolve); return response.destroyed;
+  provider = await startProviderServer("fake", { beforeFakeResponse: async ({ response, content, lines }) => {
+    if (gate) {
+      const current = gate; gate = null; current();
+      await new Promise((resolve) => release = resolve);
+      if (response.destroyed) return true;
+    }
+    if (process.env.SEPARATOR_REVIEW_LARGE_GROUP && content.startsWith("AI WORKSPACE GROUPING")) {
+      groupingRequests++;
+      if (groupingRequests % 2 === 1) {
+        const answer = { groups: [{ name: "Infrastructure", description: "Overly broad initial workspace group", tabs: lines.map(line => Number(line.index)) }], unresolved: [] };
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(answer) } }] }));
+        return true;
+      }
+    }
+    return false;
   } });
   lab = await createLabProfile(resolve(import.meta.dirname, ".."), process.env.SINE_PROFILE || await findDefaultSineProfile());
   const marionettePort = await reserveTcpPort();
@@ -91,6 +108,59 @@ try {
   receipt.complete = await state();
   assert.ok(receipt.complete.y >= 0 && receipt.complete.y < 650, JSON.stringify(receipt.complete));
   await screenshot("dark-complete");
+  const folderButtonState = () => chrome(`
+    const button = win.gZenWorkspaces.activeWorkspaceElement.querySelector("#zao-toggle-folders"), rect = button.getBoundingClientRect();
+    const groups = [...win.gZenWorkspaces.activeWorkspaceElement.querySelectorAll('tab-group:not([split-view-group]), zen-folder:not([split-view-group])')];
+    return {disabled: button.hasAttribute("disabled"), hit: win.document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)?.closest("toolbarbutton")?.id, label: button.getAttribute("aria-label"), opacity: win.getComputedStyle(button).opacity, width: rect.width, x:rect.x, y:rect.y, height:rect.height, collapsed:groups.map(group=>group.hasAttribute("collapsed"))};
+  `);
+  const clickFolders = async () => {
+    const sort = (await state()).button;
+    await pointer(sort.x + 5, sort.y + 10);
+    const rect = await folderButtonState();
+    await pointer(rect.x + rect.width/2, rect.y + rect.height/2);
+    await client.command("WebDriver:PerformActions", {actions:[{type:"pointer",id:"mouse",parameters:{pointerType:"mouse"},actions:[{type:"pointerDown",button:0},{type:"pointerUp",button:0}]}]});
+  };
+  const providerCalls = provider.calls.length;
+  await clickFolders();
+  receipt.folderFirst = await folderButtonState();
+  assert.equal(await wait('win.gZenWorkspaces.activeWorkspaceElement.querySelector("#zao-toggle-folders").getAttribute("aria-label") === "Expand all folders"'), true, JSON.stringify(receipt.folderFirst));
+  assert.ok((await folderButtonState()).collapsed.every(Boolean));
+  await clickFolders();
+  assert.ok((await folderButtonState()).collapsed.every(value => !value));
+  await chrome('win.gZenWorkspaces.activeWorkspaceElement.querySelector("tab-group").collapsed = true;');
+  assert.equal(await wait('win.gZenWorkspaces.activeWorkspaceElement.querySelector("#zao-toggle-folders").getAttribute("aria-label") === "Collapse all folders"'), true);
+  await clickFolders(); assert.ok((await folderButtonState()).collapsed.every(Boolean));
+  await clickFolders(); assert.ok((await folderButtonState()).collapsed.every(value => !value));
+  await chrome('win.document.activeElement?.blur();');
+  await pointer(600,300);
+  assert.equal(await wait('win.getComputedStyle(win.gZenWorkspaces.activeWorkspaceElement.querySelector("#zao-toggle-folders")).width === "0px"'), true);
+  assert.equal(provider.calls.length, providerCalls, "folding folders must not call AI");
+  console.log("native folder button collapses and expands all groups, handles mixed state and leaves no idle gap");
+  // Reproduce Zia's real folder-name skeleton CSS without loading its model or changing preferences.
+  receipt.ziaHeader = await chrome(`
+    const group = win.document.querySelector("tab-group[label]"), header = group.querySelector(".tab-group-label-container"), label = header.querySelector(".tab-group-label");
+    const style = win.document.createElement("style");
+    style.textContent = '.tab-group-label-container[zia-skeleton-on="true"] > *:not(.zia-skeleton-overlay) { opacity: 0 !important; }';
+    win.document.documentElement.appendChild(style);
+    const overlay = win.document.createElement("div"); overlay.className = "zia-skeleton-overlay";
+    header.appendChild(overlay); header.setAttribute("zia-skeleton-on", "true");
+    const saved = group.hasAttribute("collapsed"), states = [];
+    try {
+      for (const collapsed of [false, true]) {
+        group.collapsed = collapsed;
+        states.push({ collapsed, name: group.getAttribute("label"), opacity: win.getComputedStyle(label).opacity, overlay: win.getComputedStyle(overlay).display });
+      }
+    } finally {
+      group.collapsed = saved; header.removeAttribute("zia-skeleton-on"); overlay.remove(); style.remove();
+    }
+    return states;
+  `);
+  for (const header of receipt.ziaHeader) {
+    assert.ok(header.name.trim());
+    assert.equal(header.opacity, "1", "a named group must stay readable during Zia icon inference, expanded or collapsed");
+    assert.equal(header.overlay, "none", "the skeleton must not cover an existing name");
+  }
+  console.log("named group titles stay visible through Zia skeleton state, expanded and collapsed");
   const firstLabels = [...receipt.labels]; await clickSort();
   assert.equal(await wait('!!win.document.querySelector(\'.zao-sort-progress button[data-action="undo"]:not([hidden])\') && !win.document.querySelector("#tab-wand-button[data-zao-busy]")'), true);
   assert.deepEqual(await labels(), firstLabels);
@@ -107,6 +177,12 @@ try {
   await pointer(receipt.light.button.x+10,receipt.light.button.y+10); await screenshot("light-hover");
   assert.equal(receipt.idle.opacity, "0"); assert.equal(receipt.hover.opacity, "1");
   await writeFile(resolve(output,"receipt.json"), JSON.stringify(receipt,null,2)+"\n");
+  if (process.env.SEPARATOR_REVIEW_LARGE_GROUP) {
+    assert.equal(groupingRequests, 6, "three sorts must each review the oversized initial group once");
+    assert.equal(receipt.labels.length, GOLD_FAMILIES.length);
+    receipt.groupingRequests = groupingRequests;
+    console.log("native semantic refinement: three broad initial plans reviewed into specific task groups; Undo preserved");
+  }
   console.log("separator native acceptance: PASS");
 } finally {
   release?.(); client?.close(); if (zen) await stopZen(zen);

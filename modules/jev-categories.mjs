@@ -3,9 +3,9 @@ import { CONFIG } from "./config.mjs";
 export const CATEGORY_LIMIT = 10;
 export const CATEGORY_INPUT_LIMIT = 80000;
 
-export const parseCategories = (value) => {
-  if (!Array.isArray(value) || !value.length || value.length > CATEGORY_LIMIT) {
-    throw new Error("Use between 1 and 10 categories.");
+export const parseCategories = (value, limit = CATEGORY_LIMIT) => {
+  if (!Array.isArray(value) || !value.length || value.length > limit) {
+    throw new Error(`Use between 1 and ${limit} categories.`);
   }
   const names = new Set();
   return value.map((entry, index) => {
@@ -52,12 +52,12 @@ ${JSON.stringify(tabs)}
 Existing categories: ${JSON.stringify(existing)}
 `;
 
-export const suggestCategories = async (tabs, existing, generate, signal) => {
+export const suggestCategories = async (tabs, existing, generate, signal, { limit = CATEGORY_LIMIT, prompt = buildCategoryPrompt } = {}) => {
   const chunks = categoryInputChunks(tabs);
   const proposals = [];
   for (const chunk of chunks) {
     signal?.throwIfAborted();
-    proposals.push(parseCategories((await generate(buildCategoryPrompt(chunk, existing), signal)).categories));
+    proposals.push(parseCategories((await generate(prompt(chunk, existing), signal)).categories, limit));
   }
   if (proposals.length === 1) return proposals[0];
   // Reduce bounded summaries in rounds so exceptionally large workspaces cannot
@@ -75,7 +75,7 @@ export const suggestCategories = async (tabs, existing, generate, signal) => {
     if (batch.length) batches.push(batch);
     for (const batch of batches) {
       signal?.throwIfAborted();
-      next.push(parseCategories((await generate(buildCategoryPrompt(batch, existing, true), signal)).categories));
+      next.push(parseCategories((await generate(prompt(batch, existing, true), signal)).categories, limit));
     }
     summaries = next;
   }

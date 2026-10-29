@@ -26,6 +26,16 @@ tab-group[collapsed] tab[aria-hidden="true"] {
   display: none !important;
 }
 
+/* Zia's asynchronous icon/name suggestion hides the whole group header.
+   A group with an existing name must remain readable while that optional work
+   runs. Keep its model, icons and empty-group placeholders untouched. */
+tab-group[label]:not([label=""]) > .tab-group-label-container[zia-skeleton-on="true"] > :not(.zia-skeleton-overlay) {
+  opacity: 1 !important;
+}
+tab-group[label]:not([label=""]) > .tab-group-label-container[zia-skeleton-on="true"] > .zia-skeleton-overlay {
+  display: none !important;
+}
+
 /* Look & Feel: minimal mode for rule-matched tab-groups.
    Overrides Zen's per-group color custom properties with values derived from
    the toolbar / urlbar so groups blend into the chrome instead of standing out. */
@@ -82,26 +92,26 @@ tab-group.zao-has-custom-icon .tab-group-label::before {
   position: sticky !important; top: var(--zao-pinned-top, 0px); z-index: 2;
 }
 .pinned-tabs-container-separator > toolbarseparator { position: relative; }
-#tab-wand-button {
+:is(#tab-wand-button, #zao-toggle-folders) {
   appearance: none !important; background: transparent !important; border: 0 !important;
   width: 0 !important; min-width: 0 !important; min-height: 28px !important; margin: 0 !important;
   overflow: hidden; flex: 0 0 auto;
   padding: 5px 0 !important; border-radius: 5px !important; color: inherit !important;
   opacity: 0; pointer-events: none; transition: opacity 140ms ease, width 140ms ease, padding 140ms ease, margin 140ms ease, background-color 140ms ease;
 }
-.pinned-tabs-container-separator:hover #tab-wand-button,
-.pinned-tabs-container-separator:focus-within #tab-wand-button,
-#tab-wand-button:focus-visible, #tab-wand-button[data-zao-busy] {
+.pinned-tabs-container-separator:hover :is(#tab-wand-button, #zao-toggle-folders),
+.pinned-tabs-container-separator:focus-within :is(#tab-wand-button, #zao-toggle-folders),
+:is(#tab-wand-button, #zao-toggle-folders):focus-visible, :is(#tab-wand-button, #zao-toggle-folders)[data-zao-busy] {
   width: 28px !important; margin: 0 2px !important; padding: 5px !important;
   opacity: 1; pointer-events: auto;
 }
-#tab-wand-button:hover { background: color-mix(in srgb, currentColor 9%, transparent) !important; }
-#tab-wand-button:focus-visible { outline: 2px solid var(--zen-primary-color, AccentColor); outline-offset: 1px; }
-#tab-wand-button .toolbarbutton-box { padding: 0 !important; }
-#tab-wand-button .zao-sort-icon, #tab-wand-button .zao-stop-icon { display: flex; align-items: center; }
-#tab-wand-button .zao-stop-icon, #tab-wand-button[data-zao-busy] .zao-sort-icon { display: none; }
-#tab-wand-button[data-zao-busy] .zao-stop-icon { display: flex; }
-#tab-wand-button svg { width: 16px; height: 16px; }
+:is(#tab-wand-button, #zao-toggle-folders):hover { background: color-mix(in srgb, currentColor 9%, transparent) !important; }
+:is(#tab-wand-button, #zao-toggle-folders):focus-visible { outline: 2px solid var(--zen-primary-color, AccentColor); outline-offset: 1px; }
+:is(#tab-wand-button, #zao-toggle-folders) .toolbarbutton-box { padding: 0 !important; }
+:is(#tab-wand-button, #zao-toggle-folders) .zao-sort-icon, :is(#tab-wand-button, #zao-toggle-folders) .zao-stop-icon { display: flex; align-items: center; }
+:is(#tab-wand-button, #zao-toggle-folders) .zao-stop-icon, :is(#tab-wand-button, #zao-toggle-folders)[data-zao-busy] .zao-sort-icon { display: none; }
+:is(#tab-wand-button, #zao-toggle-folders)[data-zao-busy] .zao-stop-icon { display: flex; }
+:is(#tab-wand-button, #zao-toggle-folders) svg { width: 16px; height: 16px; }
 /* One thin sweep along the existing divider; no percentage is fabricated. */
 .pinned-tabs-container-separator[data-zao-state="busy"] > toolbarseparator::after {
   content: ""; pointer-events: none; position: absolute; inset-inline: 0; top: 50%; height: 2px;
@@ -1507,3 +1517,9 @@ dialog.zao-warning-dialog::backdrop {
 .zao-advanced-content { min-width: 0; }
 .zao-advanced-content > .zao-control-row { grid-template-columns: minmax(0, 1fr) !important; gap: 8px; }
 .zao-advanced-content .zao-settings-select { max-width: 100%; }
+
+/* Folder toggle uses native state, with inward/outward chevrons for the next action. */
+#zao-toggle-folders .zao-collapse-icon, #zao-toggle-folders .zao-expand-icon { display: flex; align-items: center; }
+#zao-toggle-folders .zao-expand-icon, #zao-toggle-folders[data-zao-expand="true"] .zao-collapse-icon { display: none; }
+#zao-toggle-folders[data-zao-expand="true"] .zao-expand-icon { display: flex; }
+@media (prefers-reduced-motion: reduce) { #zao-toggle-folders { transition: none; } }

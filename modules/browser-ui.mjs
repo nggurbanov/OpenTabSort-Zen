@@ -4,7 +4,9 @@ import { CONFIG, LOG } from "./config.mjs";
 import { domCache } from "./tabs.mjs";
 const handleOrganizeClick = async () => (await import("./click-handler.mjs")).handleOrganizeClick();
 
-import { SORT_ICON_SVG, STOP_ICON_SVG } from "./sort-icons.mjs";
+import { SORT_ICON_SVG, STOP_ICON_SVG, COLLAPSE_ICON_SVG, EXPAND_ICON_SVG } from "./sort-icons.mjs";
+
+import { FOLDER_TOGGLE_ID, FOLDER_TOGGLE_COMMAND, setupFolderToggle, teardownFolderToggle, refreshFolderToggle, toggleWorkspaceFolders } from "./folder-toggle.mjs";
 
 const buttonXul = () => `
   <toolbarbutton
@@ -46,6 +48,18 @@ export const addButtonToAllSeparators = () => {
   const separators = domCache.getSeparators();
   if (separators.length > 0) {
     separators.forEach(ensureOrganizeButton);
+    for (const separator of separators) {
+      if (separator.querySelector(`#${FOLDER_TOGGLE_ID}`)) continue;
+      const button = window.MozXULElement.parseXULToFragment(`
+        <toolbarbutton id="${FOLDER_TOGGLE_ID}" command="${FOLDER_TOGGLE_COMMAND}" tabindex="0" aria-label="Collapse all folders" label="Collapse all folders" tooltiptext="Collapse all folders in this workspace">
+          <hbox class="toolbarbutton-box" align="center">
+            <html:span class="zao-collapse-icon" xmlns:html="http://www.w3.org/1999/xhtml">${COLLAPSE_ICON_SVG}</html:span>
+            <html:span class="zao-expand-icon" xmlns:html="http://www.w3.org/1999/xhtml">${EXPAND_ICON_SVG}</html:span>
+          </hbox>
+        </toolbarbutton>`).firstChild;
+      separator.insertBefore(button, separator.querySelector(".zen-workspace-close-unpinned-tabs-button"));
+    }
+    refreshFolderToggle();
     window._zaoSeparatorOperation?.refresh();
   } else {
     const periphery = document.querySelector("#tabbrowser-arrowscrollbox-periphery");
@@ -60,22 +74,26 @@ export const setupCommand = () => {
   if (!zenCommands) return;
   if (window._zaoCommandState && window._zaoCommandState.target !== zenCommands) teardownCommand();
 
-  if (!zenCommands.querySelector(`#${CONFIG.COMMAND_ID}`)) {
-    try {
-      const cmd = window.MozXULElement.parseXULToFragment(
-        `<command id="${CONFIG.COMMAND_ID}"/>`
-      ).firstChild;
-      zenCommands.appendChild(cmd);
-    } catch (e) {
-      console.error(`${LOG} command create error:`, e);
+  for (const commandId of [CONFIG.COMMAND_ID, FOLDER_TOGGLE_COMMAND]) {
+    if (!zenCommands.querySelector(`#${commandId}`)) {
+      try {
+        const cmd = window.MozXULElement.parseXULToFragment(
+          `<command id="${commandId}"/>`
+        ).firstChild;
+        zenCommands.appendChild(cmd);
+      } catch (e) {
+        console.error(`${LOG} command create error:`, e);
+      }
     }
   }
+  setupFolderToggle();
 
   // DOM-expando guard rather than a module-level flag — a module re-import
   // (during dev) would reset a module variable, accumulating listeners. The
   // expando survives module reloads because it's pinned to the DOM element.
   if (!zenCommands._zaoCommandListener) {
     const listener = (event) => {
+      if (event.target.id === FOLDER_TOGGLE_COMMAND) { toggleWorkspaceFolders(); return; }
       if (event.target.id !== CONFIG.COMMAND_ID) return;
       if (window._zaoSeparatorOperation?.stop()) return;
       handleOrganizeClick();
@@ -87,6 +105,7 @@ export const setupCommand = () => {
 };
 
 export const teardownCommand = () => {
+  teardownFolderToggle();
   window._zaoSeparatorOperation?.remove();
   const state = window._zaoCommandState;
   const target = state?.target || domCache.getCommandSet();
@@ -95,7 +114,7 @@ export const teardownCommand = () => {
     target.removeEventListener("command", listener);
     if (target._zaoCommandListener === listener) delete target._zaoCommandListener;
   }
-  document.querySelectorAll(`#${CONFIG.BUTTON_ID}, #${CONFIG.COMMAND_ID}`).forEach((element) => element.remove());
+  document.querySelectorAll(`#${CONFIG.BUTTON_ID}, #${CONFIG.COMMAND_ID}, #${FOLDER_TOGGLE_ID}, #${FOLDER_TOGGLE_COMMAND}`).forEach((element) => element.remove());
   delete window._zaoCommandState;
   domCache.invalidate();
 };
